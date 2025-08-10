@@ -1,0 +1,59 @@
+[
+  {
+    "name": "CreateSalesforceLead",
+    "description": "Creates a new Lead in Salesforce CRM. Provide first name, last name, and company.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "company": { "type": "string" }
+      },
+      "required": ["firstName", "lastName", "company"]
+    }
+  },
+  {
+    "name": "GetSalesforceLeads",
+    "description": "Retrieves a list of Salesforce Leads, ordered by most recent created date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Number of leads to retrieve (default: 20, max: 200)."
+        }
+      }
+    }
+  },
+  {
+    "name": "UpdateSalesforceLead",
+    "description": "Updates any fields of a Salesforce Lead. You must provide the lead ID and at least one field to update.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "leadId": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "company": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string" },
+        "title": { "type": "string" },
+        "leadSource": { "type": "string" },
+        "industry": { "type": "string" }
+      },
+      "required": ["leadId"]
+    }
+  },
+  {
+    "name": "DeleteSalesforceLead",
+    "description": "Deletes a Salesforce Lead using its unique Lead ID.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "leadId": { "type": "string" }
+      },
+      "required": ["leadId"]
+    }
+  }
+]
