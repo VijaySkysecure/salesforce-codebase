@@ -1,5 +1,60 @@
 [
   {
+    "name": "CreateSalesforceOpportunity",
+    "description": "Creates a new Opportunity in Salesforce CRM. Provide name, stage name, and close date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "stageName": { "type": "string", "description": "Stage of the opportunity (e.g., Prospecting, Qualification, Needs Analysis, Value Proposition, Id. Decision Makers, Perception Analysis, Proposal/Price Quote, Negotiation/Review, Closed Won, Closed Lost)" },
+        "closeDate": { "type": "string", "description": "Expected close date in YYYY-MM-DD format" }
+      },
+      "required": ["name", "closeDate"]
+    }
+  },
+  {
+    "name": "GetSalesforceOpportunities",
+    "description": "Retrieves a list of Salesforce Opportunities, ordered by most recent created date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Number of opportunities to retrieve (default: 20, max: 200)."
+        }
+      }
+    }
+  },
+  {
+    "name": "UpdateSalesforceOpportunity",
+    "description": "Updates any fields of a Salesforce Opportunity. You must provide the opportunity ID and at least one field to update.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "opportunityId": { "type": "string" },
+        "name": { "type": "string" },
+        "stageName": { "type": "string" },
+        "amount": { "type": "number" },
+        "closeDate": { "type": "string", "description": "Date in YYYY-MM-DD format" },
+        "description": { "type": "string" },
+        "probability": { "type": "number", "description": "Probability percentage (0-100)" },
+        "accountId": { "type": "string", "description": "Salesforce Account ID to associate with this opportunity" }
+      },
+      "required": ["opportunityId"]
+    }
+  },
+  {
+    "name": "DeleteSalesforceOpportunity",
+    "description": "Deletes a Salesforce Opportunity using its unique Opportunity ID.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "opportunityId": { "type": "string" }
+      },
+      "required": ["opportunityId"]
+    }
+  },
+  {
     "name": "CreateSalesforceLead",
     "description": "Creates a new Lead in Salesforce CRM. Provide first name, last name, and company.",
     "parameters": {
@@ -54,6 +109,164 @@
         "leadId": { "type": "string" }
       },
       "required": ["leadId"]
+    }
+  },
+  {
+    "name": "CreateSalesforceTask",
+    "description": "Creates a new Task in Salesforce CRM. Provide subject and optionally status.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "subject": { "type": "string" },
+        "status": { "type": "string", "description": "Task status (e.g., Not Started, In Progress, Completed, Waiting on someone else, Deferred)" }
+      },
+      "required": ["subject"]
+    }
+  },
+  {
+    "name": "GetSalesforceTasks",
+    "description": "Retrieves a list of Salesforce Tasks, ordered by most recent created date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Number of tasks to retrieve (default: 20, max: 200)."
+        }
+      }
+    }
+  },
+  {
+    "name": "UpdateSalesforceTask",
+    "description": "Updates any fields of a Salesforce Task. You must provide the task ID and at least one field to update.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string" },
+        "subject": { "type": "string" },
+        "status": { "type": "string" },
+        "priority": { "type": "string", "description": "Task priority (e.g., High, Normal, Low)" },
+        "activityDate": { "type": "string", "description": "Due date in YYYY-MM-DD format" },
+        "description": { "type": "string" }
+      },
+      "required": ["taskId"]
+    }
+  },
+  {
+    "name": "DeleteSalesforceTask",
+    "description": "Deletes a Salesforce Task using its unique Task ID.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string" }
+      },
+      "required": ["taskId"]
+    }
+  },
+  {
+    "name": "CreateSalesforceAccount",
+    "description": "Creates a new Account in Salesforce CRM. Provide account name.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    }
+  },
+  {
+    "name": "GetSalesforceAccounts",
+    "description": "Retrieves a list of Salesforce Accounts, ordered by most recent created date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Number of accounts to retrieve (default: 20, max: 200)."
+        }
+      }
+    }
+  },
+  {
+    "name": "UpdateSalesforceAccount",
+    "description": "Updates any fields of a Salesforce Account. You must provide the account ID and at least one field to update.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "accountId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "description": "Account type (e.g., Customer - Direct, Customer - Channel, Channel Partner / Reseller, Installation Partner, Technology Partner, Other)" },
+        "industry": { "type": "string" },
+        "phone": { "type": "string" },
+        "website": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["accountId"]
+    }
+  },
+  {
+    "name": "DeleteSalesforceAccount",
+    "description": "Deletes a Salesforce Account using its unique Account ID.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "accountId": { "type": "string" }
+      },
+      "required": ["accountId"]
+    }
+  },
+  {
+    "name": "CreateSalesforceContact",
+    "description": "Creates a new Contact in Salesforce CRM. Provide first name and last name.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" }
+      },
+      "required": ["firstName", "lastName"]
+    }
+  },
+  {
+    "name": "GetSalesforceContacts",
+    "description": "Retrieves a list of Salesforce Contacts, ordered by most recent created date.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "limit": {
+          "type": "number",
+          "description": "Number of contacts to retrieve (default: 20, max: 200)."
+        }
+      }
+    }
+  },
+  {
+    "name": "UpdateSalesforceContact",
+    "description": "Updates any fields of a Salesforce Contact. You must provide the contact ID and at least one field to update.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "contactId": { "type": "string" },
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "title": { "type": "string" },
+        "accountId": { "type": "string", "description": "Salesforce Account ID to associate with this contact" },
+        "department": { "type": "string" }
+      },
+      "required": ["contactId"]
+    }
+  },
+  {
+    "name": "DeleteSalesforceContact",
+    "description": "Deletes a Salesforce Contact using its unique Contact ID.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "contactId": { "type": "string" }
+      },
+      "required": ["contactId"]
     }
   }
 ]
