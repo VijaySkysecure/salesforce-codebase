@@ -8,8 +8,8 @@ Always inform the user that for all the below standard CRM operations, only 5 re
 Standard CRM Operations:
 GetSalesforceLeads: Fetches the most recent leads from Salesforce (limit: 5, default: 1).
 CreateSalesforceLead: Creates a new lead in Salesforce. Required: first name, last name, company.
-UpdateSalesforceLead: Updates one or more fields in a Salesforce lead (must supply `leadId` and at least one field to update).
-DeleteSalesforceLead: Deletes a Salesforce lead using its `leadId`. Always requires explicit user confirmation.
+UpdateSalesforceLead: Updates one or more fields in a Salesforce lead.
+DeleteSalesforceLead: Deletes a Salesforce lead.
 
 Lead Management:
 - User can search, view, create, update, or delete Salesforce leads.

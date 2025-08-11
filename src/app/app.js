@@ -29,14 +29,14 @@ const app = new Application({
   storage,
   ai: {
     planner,
-    enable_feedback_loop: true,
+    // enable_feedback_loop: true,
   },
 });
 
-app.feedbackLoop(async (context, state, feedbackLoopData) => {
-  //add custom feedback process logic here
-  console.log("Your feedback is " + JSON.stringify(context.activity.value));
-});
+// app.feedbackLoop(async (context, state, feedbackLoopData) => {
+//   //add custom feedback process logic here
+//   console.log("Your feedback is " + JSON.stringify(context.activity.value));
+// });
 
 
 
@@ -128,9 +128,11 @@ function initializeConversationState(state) {
 
 app.ai.action("GetSalesforceLeads", async (context, state, parameters) => {
   try {
+    console.log("GetSalesforceLeads action called with parameters:", parameters);
     // Ensure state is initialized with defaultConversationState
     if (!state.conversation) state.conversation = {};
     state.conversation = { ...defaultConversationState, ...state.conversation };
+    
 
     const userId = context.activity.from.id;
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
@@ -145,18 +147,24 @@ app.ai.action("GetSalesforceLeads", async (context, state, parameters) => {
 
     const config = require("../config");
     const axios = require("axios");
-
+    console.log("djwffeiu",
+    {
+      Authorization: `Bearer ${config.salesforceAccessToken}`,
+      "Content-Type": "application/json",
+    }
+    )
     const headers = {
       Authorization: `Bearer ${config.salesforceAccessToken}`,
       "Content-Type": "application/json",
     };
 
     const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.lightning.force.com/services/data/v60.0/query?q=${encodeURIComponent(query)}`,
+      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
       { headers }
     );
 
     const records = response.data.records || [];
+    console.log(response.data, "egbj");
 
     if (records.length === 0) {
       await context.sendActivity(
@@ -180,8 +188,40 @@ app.ai.action("GetSalesforceLeads", async (context, state, parameters) => {
     }));
 
     // Store formatted version
-    state.conversation.formattedLeads = JSON.stringify(formattedLeads, null, 2);
+    // state.conversation.formattedLeads = JSON.stringify(formattedLeads, null, 2);
+ 
 
+const adaptiveCard = {
+  type: "AdaptiveCard",
+  $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+  version: "1.4",
+  body: [
+    {
+      type: "TextBlock",
+      text: `📊 Retrieved ${records.length} Leads`,
+      weight: "Bolder",
+      size: "Large",
+      wrap: true
+    },
+    ...formattedLeads.map(lead => ({
+      type: "Container",
+      items: [
+        { type: "TextBlock", text: `**Name:** ${lead.name}`, wrap: true },
+        { type: "TextBlock", text: `**Company:** ${lead.company}`, wrap: true },
+        { type: "TextBlock", text: `**Status:** ${lead.status}`, wrap: true },
+        { type: "TextBlock", text: `**Email:** ${lead.email}`, wrap: true },
+        { type: "TextBlock", text: `**Phone:** ${lead.phone}`, wrap: true }
+      ],
+      separator: true
+    }))
+  ]
+};
+
+await context.sendActivity({
+  attachments: [CardFactory.adaptiveCard(adaptiveCard)]
+});
+
+    // return response.data.records
     return `Retrieved ${records.length} leads successfully`;
   } catch (error) {
     console.error("Error fetching Salesforce leads:", error);
@@ -244,17 +284,61 @@ app.ai.action("CreateSalesforceLead", async (context, state, parameters) => {
 
 app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
   try {
+    console.log("UpdateSalesforceLead action called with parameters:", parameters);
     initializeConversationState(state);
     const userId = context.activity.from.id;
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
-    if (!parameters.leadId) {
+    const config = require("../config");
+    const axios = require("axios");
+
+    // 1. If no leadId is given, try to find it by name
+    let leadId = parameters.leadId;
+    if ((parameters.firstName || parameters.lastName || parameters.name)) {
+      let nameQuery;
+      if (parameters.name) {
+        // Full name search
+        nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE Name LIKE '%${parameters.name}%' LIMIT 200`;
+      } else {
+        // Partial name search
+        const firstNamePart = parameters.firstName ? `FirstName LIKE '%${parameters.firstName}%'` : "";
+        const lastNamePart = parameters.lastName ? `LastName LIKE '%${parameters.lastName}%'` : "";
+        const andClause = firstNamePart && lastNamePart ? " AND " : "";
+        nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE ${firstNamePart}${andClause}${lastNamePart} LIMIT 200`;
+      }
+
+      const headers = {
+        Authorization: `Bearer ${config.salesforceAccessToken}`,
+        "Content-Type": "application/json",
+      };
+
+      const queryUrl = `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`;
+      const lookupResponse = await axios.get(queryUrl, { headers });
+
+      if (lookupResponse.data.records.length === 0) {
+        await context.sendActivity(
+          MessageFactory.text(`❌ No Salesforce lead found matching the provided name.`)
+        );
+        return "No lead found by name";
+      }
+      if (lookupResponse.data.records.length > 1) {
+        await context.sendActivity(
+          MessageFactory.text(`⚠ Multiple leads found matching the provided name. Please refine your search.`)
+        );
+        return "Multiple leads found by name";
+      }
+
+      leadId = lookupResponse.data.records[0].Id;
+    }
+
+    if (!leadId) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Lead ID to update a lead.")
+        MessageFactory.text("❌ Missing required information. I need either: Lead ID or a name to find the lead.")
       );
       return "Missing required parameters";
     }
 
+    // 2. Prepare update fields
     const updateFields = {
       ...(parameters.firstName && { FirstName: parameters.firstName }),
       ...(parameters.lastName && { LastName: parameters.lastName }),
@@ -274,16 +358,17 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
       return "No fields provided to update";
     }
 
-    console.log(`Updating lead ${parameters.leadId} in Salesforce CRM...`);
+    console.log(`Updating lead ${leadId} in Salesforce CRM...`);
     const { updateSalesforceLeadById } = require("../salesforce");
 
-    const response = await updateSalesforceLead(context, state, parameters.leadId, updateFields);
+    // Assuming updateSalesforceLeadById(context, state, leadId, fields) is implemented
+    const response = await updateSalesforceLeadById(context, state, leadId, updateFields);
 
     if (response.status === "success") {
       await context.sendActivity(
         MessageFactory.text(
           `✅ **Lead Updated Successfully!**\n\n` +
-          `🆔 **Lead ID:** ${parameters.leadId}\n` +
+          `🆔 **Lead ID:** ${leadId}\n` +
           (parameters.firstName ? `👤 **First Name:** ${parameters.firstName}\n` : "") +
           (parameters.lastName ? `👤 **Last Name:** ${parameters.lastName}\n` : "") +
           (parameters.company ? `🏢 **Company:** ${parameters.company}\n` : "") +
@@ -295,7 +380,7 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
           (parameters.industry ? `🏭 **Industry:** ${parameters.industry}\n` : "")
         )
       );
-      return `Successfully updated Salesforce lead ${parameters.leadId}`;
+      return `Successfully updated Salesforce lead ${leadId}`;
     } else {
       await context.sendActivity(
         MessageFactory.text(`❌ Failed to update lead: ${response.message || "Unknown error"}.`)
@@ -314,29 +399,72 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
 
 
 
+
 app.ai.action("DeleteSalesforceLead", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
     const userId = context.activity.from.id;
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
-    if (!parameters.leadId) {
+    const config = require("../config");
+    const axios = require("axios");
+
+    // 1. If no leadId is given, try to find it by name
+    let leadId = parameters.leadId;
+    if ((parameters.firstName || parameters.lastName || parameters.name)) {
+      let nameQuery;
+      if (parameters.name) {
+        // Full name search
+        nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE Name LIKE '%${parameters.name}%' LIMIT 200`;
+      } else {
+        // Partial name search
+        const firstNamePart = parameters.firstName ? `FirstName LIKE '%${parameters.firstName}%'` : "";
+        const lastNamePart = parameters.lastName ? `LastName LIKE '%${parameters.lastName}%'` : "";
+        const andClause = firstNamePart && lastNamePart ? " AND " : "";
+        nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE ${firstNamePart}${andClause}${lastNamePart} LIMIT 200`;
+      }
+
+      const headers = {
+        Authorization: `Bearer ${config.salesforceAccessToken}`,
+        "Content-Type": "application/json",
+      };
+
+      const queryUrl = `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`;
+      const lookupResponse = await axios.get(queryUrl, { headers });
+
+      if (lookupResponse.data.records.length === 0) {
+        await context.sendActivity(
+          MessageFactory.text(`❌ No Salesforce lead found matching the provided name.`)
+        );
+        return "No lead found by name";
+      }
+      if (lookupResponse.data.records.length > 1) {
+        await context.sendActivity(
+          MessageFactory.text(`⚠ Multiple leads found matching the provided name. Please refine your search.`)
+        );
+        return "Multiple leads found by name";
+      }
+
+      leadId = lookupResponse.data.records[0].Id;
+    }
+
+    if (!leadId) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Lead ID to delete a lead.")
+        MessageFactory.text("❌ Missing required information. I need either: Lead ID or a name to find the lead.")
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting lead ${parameters.leadId} from Salesforce CRM...`);
-    const { deleteSalesforceLeadById } = require("../salesforce");
+    console.log(`Deleting lead ${leadId} from Salesforce CRM...`);
+    const { deleteSalesforceLead } = require("../salesforce");
 
-    const response = await deleteSalesforceLead(context, state, parameters.leadId);
+    const response = await deleteSalesforceLead(context, state, leadId);
 
     if (response.status === "success") {
       await context.sendActivity(
-        MessageFactory.text(`✅ **Lead Deleted Successfully!**\n\n🆔 **Lead ID:** ${parameters.leadId}`)
+        MessageFactory.text(`✅ **Lead Deleted Successfully!**\n\n🆔 **Lead ID:** ${leadId}`)
       );
-      return `Successfully deleted lead ${parameters.leadId}`;
+      return `Successfully deleted lead ${leadId}`;
     } else {
       await context.sendActivity(
         MessageFactory.text(`❌ Failed to delete lead: ${response.message || "Unknown error"}.`)
@@ -352,6 +480,7 @@ app.ai.action("DeleteSalesforceLead", async (context, state, parameters) => {
     return `Error occurred: ${errorMessage}`;
   }
 });
+
 
 
 // ======================= OPPORTUNITIES =======================
@@ -372,7 +501,7 @@ app.ai.action("GetSalesforceOpportunities", async (context, state, parameters) =
     };
 
     const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.lightning.force.com/services/data/v60.0/query?q=${encodeURIComponent(query)}`,
+      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
       { headers }
     );
 

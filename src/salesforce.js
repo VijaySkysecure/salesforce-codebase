@@ -1,7 +1,7 @@
 const axios = require("axios");
 const config = require("./config");
 
-const SALESFORCE_INSTANCE_URL = "https://orgfarm-5a7d798f5f-dev-ed.develop.lightning.force.com";
+const SALESFORCE_INSTANCE_URL = "https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0";
 const SALESFORCE_API_VERSION = "v60.0";
 
 // Construct headers
@@ -84,7 +84,7 @@ async function deleteSalesforceOpportunity(context, state, opportunityId) {
 async function createSalesforceLead(context, state, leadData) {
   try {
     const response = await axios.post(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Lead`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Lead`,
       {
         FirstName: leadData.firstName,
         LastName: leadData.lastName,
@@ -136,7 +136,7 @@ async function getSalesforceLeads(limit = 20) {
 async function updateSalesforceLead(context, state, leadId, fields) {
   try {
     const res = await axios.patch(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Lead/${leadId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Lead/${leadId}`,
       fields,
       { headers: getHeaders() }
     );
@@ -155,7 +155,7 @@ async function updateSalesforceLead(context, state, leadId, fields) {
 async function deleteSalesforceLead(context, state, leadId) {
   try {
     await axios.delete(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Lead/${leadId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Lead/${leadId}`,
       { headers: getHeaders() }
     );
     return { status: "success" };

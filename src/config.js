@@ -1,5 +1,5 @@
-require('dotenv').config({ path: '.env' });
-require('dotenv').config({ path: '.env.local', override: true });
+require('dotenv').config({ path: './env/.env' });
+require('dotenv').config({ path: './env/.env.local', override: true });
 
 const config = {
   MicrosoftAppId: process.env.BOT_ID,
@@ -11,5 +11,5 @@ const config = {
   azureOpenAIDeploymentName: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
   salesforceAccessToken: process.env.SALESFORCE_ACCESS_TOKEN,
 };
-
+console.log("Config loaded:", config);
 module.exports = config;

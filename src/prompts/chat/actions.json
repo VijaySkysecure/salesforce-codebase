@@ -81,36 +81,53 @@
     }
   },
   {
-    "name": "UpdateSalesforceLead",
-    "description": "Updates any fields of a Salesforce Lead. You must provide the lead ID and at least one field to update.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "leadId": { "type": "string" },
-        "firstName": { "type": "string" },
-        "lastName": { "type": "string" },
-        "company": { "type": "string" },
-        "email": { "type": "string" },
-        "phone": { "type": "string" },
-        "status": { "type": "string" },
-        "title": { "type": "string" },
-        "leadSource": { "type": "string" },
-        "industry": { "type": "string" }
+  "name": "UpdateSalesforceLead",
+  "description": "Finds a Salesforce lead by Lead ID or by name (full name or first/last name), then updates the specified fields.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string", "description": "Full name of the lead to find if Lead ID is not provided." },
+      "firstName": { "type": "string", "description": "Lead's first name. Used for finding or updating the lead." },
+      "lastName": { "type": "string", "description": "Lead's last name. Used for finding or updating the lead." },
+      "company": { "type": "string", "description": "Company name of the lead." },
+      "email": { "type": "string", "description": "Email address of the lead." },
+      "phone": { "type": "string", "description": "Phone number of the lead." },
+      "status": { "type": "string", "description": "Current status of the lead." },
+      "title": { "type": "string", "description": "Job title of the lead." },
+      "leadSource": { "type": "string", "description": "Source from which the lead was acquired." },
+      "industry": { "type": "string", "description": "Industry associated with the lead." }
+    },
+    "required": ["firstName"],
+    "additionalProperties": false
+  }
+},
+{
+  "name": "DeleteSalesforceLead",
+  "description": "Deletes a Salesforce Lead by Lead ID or by searching for the lead using full name, first name, or last name.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "leadId": {
+        "type": "string",
+        "description": "The Salesforce Lead ID to delete. Optional if name or first/last name is provided."
       },
-      "required": ["leadId"]
-    }
-  },
-  {
-    "name": "DeleteSalesforceLead",
-    "description": "Deletes a Salesforce Lead using its unique Lead ID.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "leadId": { "type": "string" }
+      "name": {
+        "type": "string",
+        "description": "Full name of the lead to find if Lead ID is not provided."
       },
-      "required": ["leadId"]
-    }
-  },
+      "firstName": {
+        "type": "string",
+        "description": "Lead's first name. Used for finding the lead if Lead ID is not provided."
+      },
+      "lastName": {
+        "type": "string",
+        "description": "Lead's last name. Used for finding the lead if Lead ID is not provided."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  }
+},
   {
     "name": "CreateSalesforceTask",
     "description": "Creates a new Task in Salesforce CRM. Provide subject and optionally status.",
