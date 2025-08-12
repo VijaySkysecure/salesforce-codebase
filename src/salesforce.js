@@ -18,7 +18,7 @@ function getHeaders() {
 async function createSalesforceOpportunity(context, state, opportunityData) {
   try {
     const response = await axios.post(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Opportunity`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Opportunity`,
       {
         Name: opportunityData.name,
         StageName: opportunityData.stageName,
@@ -43,10 +43,33 @@ async function createSalesforceOpportunity(context, state, opportunityData) {
 }
 
 // Update an opportunity by ID
+// Helper function to find opportunity by name
+async function findOpportunityByName(opportunityName) {
+  try {
+    const query = `SELECT Id, Name FROM Opportunity WHERE Name LIKE '%${opportunityName.replace(/'/g, "\\'")}%' LIMIT 10`;
+    
+    const res = await axios.get(
+      `${SALESFORCE_INSTANCE_URL}/query?q=${encodeURIComponent(query)}`,
+      { headers: getHeaders() }
+    );
+
+    return { 
+      status: "success", 
+      opportunities: res.data.records 
+    };
+  } catch (err) {
+    console.error("Salesforce Find Opportunity Error:", err.response?.data || err.message);
+    return {
+      status: "error",
+      message: err.response?.data?.[0]?.message || err.message,
+    };
+  }
+}
+
 async function updateSalesforceOpportunity(context, state, opportunityId, fields) {
   try {
     const res = await axios.patch(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Opportunity/${opportunityId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Opportunity/${opportunityId}`,
       fields,
       { headers: getHeaders() }
     );
@@ -61,14 +84,49 @@ async function updateSalesforceOpportunity(context, state, opportunityId, fields
   }
 }
 
-// Delete opportunity by ID
-async function deleteSalesforceOpportunity(context, state, opportunityId) {
+// Updated salesforce.js - Delete Function
+
+async function deleteSalesforceOpportunity(context, state, opportunityIdentifier) {
   try {
+    let opportunityId = opportunityIdentifier;
+    let opportunityName = opportunityIdentifier;
+    
+    // If the identifier doesn't look like a Salesforce ID (15 or 18 chars starting with specific pattern)
+    if (!opportunityIdentifier.match(/^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$/)) {
+      // Try to find by name
+      const searchResult = await findOpportunityByName(opportunityIdentifier);
+      
+      if (searchResult.status === "error") {
+        return { status: "error", message: `Could not search for opportunity: ${searchResult.message}` };
+      }
+      
+      if (searchResult.opportunities.length === 0) {
+        return { status: "error", message: `No opportunity found with name containing: "${opportunityIdentifier}"` };
+      }
+      
+      if (searchResult.opportunities.length > 1) {
+        const names = searchResult.opportunities.map(opp => `"${opp.Name}"`).join(", ");
+        return { 
+          status: "error", 
+          message: `Multiple opportunities found: ${names}. Please be more specific with the opportunity name.`,
+          multipleResults: searchResult.opportunities
+        };
+      }
+      
+      opportunityId = searchResult.opportunities[0].Id;
+      opportunityName = searchResult.opportunities[0].Name;
+    }
+
     await axios.delete(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Opportunity/${opportunityId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Opportunity/${opportunityId}`,
       { headers: getHeaders() }
     );
-    return { status: "success" };
+    
+    return { 
+      status: "success", 
+      opportunityId: opportunityId,
+      opportunityName: opportunityName
+    };
   } catch (err) {
     console.error("Salesforce Delete Opportunity Error:", err.response?.data || err.message);
     return {

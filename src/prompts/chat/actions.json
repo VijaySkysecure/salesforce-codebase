@@ -26,34 +26,83 @@
     }
   },
   {
-    "name": "UpdateSalesforceOpportunity",
-    "description": "Updates any fields of a Salesforce Opportunity. You must provide the opportunity ID and at least one field to update.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "opportunityId": { "type": "string" },
-        "name": { "type": "string" },
-        "stageName": { "type": "string" },
-        "amount": { "type": "number" },
-        "closeDate": { "type": "string", "description": "Date in YYYY-MM-DD format" },
-        "description": { "type": "string" },
-        "probability": { "type": "number", "description": "Probability percentage (0-100)" },
-        "accountId": { "type": "string", "description": "Salesforce Account ID to associate with this opportunity" }
+  "name": "UpdateSalesforceOpportunity",
+  "description": "Updates any fields of a Salesforce Opportunity. You can provide either the opportunity ID or opportunity name to identify the opportunity, and at least one field to update.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "opportunityId": { 
+        "type": "string", 
+        "description": "The Salesforce Opportunity ID (18-character ID starting with 006)" 
       },
-      "required": ["opportunityId"]
-    }
-  },
-  {
-    "name": "DeleteSalesforceOpportunity",
-    "description": "Deletes a Salesforce Opportunity using its unique Opportunity ID.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "opportunityId": { "type": "string" }
+      "opportunityName": { 
+        "type": "string", 
+        "description": "The name of the opportunity to update (alternative to opportunityId)" 
       },
-      "required": ["opportunityId"]
-    }
-  },
+      "name": { 
+        "type": "string", 
+        "description": "Alternative parameter for opportunity name (same as opportunityName)" 
+      },
+      "newName": { 
+        "type": "string", 
+        "description": "New name to set for the opportunity" 
+      },
+      "stageName": { 
+        "type": "string", 
+        "description": "The sales stage name (e.g., 'Prospecting', 'Qualification', 'Closed Won')" 
+      },
+      "stage": { 
+        "type": "string", 
+        "description": "Alternative parameter for stage name (same as stageName)" 
+      },
+      "amount": { 
+        "type": "number", 
+        "description": "Opportunity amount in dollars" 
+      },
+      "closeDate": { 
+        "type": "string", 
+        "description": "Expected close date in YYYY-MM-DD format" 
+      },
+      "description": { 
+        "type": "string", 
+        "description": "Description or notes about the opportunity" 
+      },
+      "probability": { 
+        "type": "number", 
+        "description": "Win probability percentage (0-100)" 
+      },
+      "accountId": { 
+        "type": "string", 
+        "description": "Salesforce Account ID to associate with this opportunity" 
+      }
+    },
+    "required": ["opportunityName"],
+    "additionalProperties": false
+  }
+},
+{
+  "name": "DeleteSalesforceOpportunity",
+  "description": "Deletes a Salesforce Opportunity using Opportunity Name. If multiple opportunities match the name, it will show a list for the user to choose from.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "opportunityId": { 
+        "type": "string",
+        "description": "The unique Salesforce Opportunity ID (15 or 18 characters). Optional if opportunityName or name is provided."
+      },
+      "opportunityName": { 
+        "type": "string",
+        "description": "The name of the opportunity to delete. Can be partial name - will search for matches."
+      },
+      "name": { 
+        "type": "string",
+        "description": "Alternative parameter for opportunity name."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  }
+},
   {
     "name": "CreateSalesforceLead",
     "description": "Creates a new Lead in Salesforce CRM. Provide first name, last name, and company.",

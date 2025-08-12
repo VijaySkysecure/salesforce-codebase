@@ -97,6 +97,7 @@ const defaultConversationState = {
   formattedMeetings: null,
   formattedCampaigns: null,
   formattedCalls: null,
+  formattedOpportunities: null,
   
   // Search results
   formattedLeadsSearch: null,
@@ -284,61 +285,64 @@ app.ai.action("CreateSalesforceLead", async (context, state, parameters) => {
 
 app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
   try {
-    console.log("UpdateSalesforceLead action called with parameters:", parameters);
+    console.log("UpdateSalesforceLead called with:", parameters);
     initializeConversationState(state);
-    const userId = context.activity.from.id;
-    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
-
+ 
     const config = require("../config");
     const axios = require("axios");
-
-    // 1. If no leadId is given, try to find it by name
+ 
     let leadId = parameters.leadId;
-    if ((parameters.firstName || parameters.lastName || parameters.name)) {
+ 
+    // 1. Try finding lead by email first
+    if (!leadId && parameters.email) {
+      const emailQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE Email LIKE '%${parameters.email}%' LIMIT 200`;
+      const emailResponse = await axios.get(
+        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(emailQuery)}`,
+        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      );
+ 
+      if (emailResponse.data.records.length === 1) {
+        leadId = emailResponse.data.records[0].Id;
+      } else if (emailResponse.data.records.length > 1) {
+        await context.sendActivity("⚠ Multiple leads found by email. Please refine search.");
+        return;
+      }
+    }
+ 
+    // 2. If still no leadId, try by name
+    if (!leadId && (parameters.firstName || parameters.lastName || parameters.name)) {
       let nameQuery;
       if (parameters.name) {
-        // Full name search
         nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE Name LIKE '%${parameters.name}%' LIMIT 200`;
       } else {
-        // Partial name search
         const firstNamePart = parameters.firstName ? `FirstName LIKE '%${parameters.firstName}%'` : "";
         const lastNamePart = parameters.lastName ? `LastName LIKE '%${parameters.lastName}%'` : "";
         const andClause = firstNamePart && lastNamePart ? " AND " : "";
         nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE ${firstNamePart}${andClause}${lastNamePart} LIMIT 200`;
       }
-
-      const headers = {
-        Authorization: `Bearer ${config.salesforceAccessToken}`,
-        "Content-Type": "application/json",
-      };
-
-      const queryUrl = `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`;
-      const lookupResponse = await axios.get(queryUrl, { headers });
-
-      if (lookupResponse.data.records.length === 0) {
-        await context.sendActivity(
-          MessageFactory.text(`❌ No Salesforce lead found matching the provided name.`)
-        );
-        return "No lead found by name";
-      }
-      if (lookupResponse.data.records.length > 1) {
-        await context.sendActivity(
-          MessageFactory.text(`⚠ Multiple leads found matching the provided name. Please refine your search.`)
-        );
-        return "Multiple leads found by name";
-      }
-
-      leadId = lookupResponse.data.records[0].Id;
-    }
-
-    if (!leadId) {
-      await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need either: Lead ID or a name to find the lead.")
+ 
+      const nameResponse = await axios.get(
+        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       );
-      return "Missing required parameters";
+ 
+      if (nameResponse.data.records.length === 0) {
+        await context.sendActivity("❌ No matching Salesforce lead found.");
+        return;
+      }
+      if (nameResponse.data.records.length > 1) {
+        await context.sendActivity("⚠ Multiple leads found by name. Please refine search.");
+        return;
+      }
+      leadId = nameResponse.data.records[0].Id;
     }
-
-    // 2. Prepare update fields
+ 
+    if (!leadId) {
+      await context.sendActivity("❌ Could not find a matching lead by provided details.");
+      return;
+    }
+ 
+    // 3. Build update object
     const updateFields = {
       ...(parameters.firstName && { FirstName: parameters.firstName }),
       ...(parameters.lastName && { LastName: parameters.lastName }),
@@ -348,52 +352,26 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
       ...(parameters.status && { Status: parameters.status }),
       ...(parameters.title && { Title: parameters.title }),
       ...(parameters.leadSource && { LeadSource: parameters.leadSource }),
-      ...(parameters.industry && { Industry: parameters.industry }),
+      ...(parameters.industry && { Industry: parameters.industry })
     };
-
+ 
     if (Object.keys(updateFields).length === 0) {
-      await context.sendActivity(
-        MessageFactory.text("❌ No fields provided to update. Please include at least one field like firstName, email, etc.")
-      );
-      return "No fields provided to update";
+      await context.sendActivity("❌ No fields provided to update.");
+      return;
     }
-
-    console.log(`Updating lead ${leadId} in Salesforce CRM...`);
-    const { updateSalesforceLeadById } = require("../salesforce");
-
-    // Assuming updateSalesforceLeadById(context, state, leadId, fields) is implemented
-    const response = await updateSalesforceLeadById(context, state, leadId, updateFields);
-
+ 
+    console.log(`Updating lead ${leadId} with fields:`, updateFields);
+    const { updateSalesforceLead } = require("../salesforce");
+    const response = await updateSalesforceLead(context, state, leadId, updateFields);
+ 
     if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Lead Updated Successfully!**\n\n` +
-          `🆔 **Lead ID:** ${leadId}\n` +
-          (parameters.firstName ? `👤 **First Name:** ${parameters.firstName}\n` : "") +
-          (parameters.lastName ? `👤 **Last Name:** ${parameters.lastName}\n` : "") +
-          (parameters.company ? `🏢 **Company:** ${parameters.company}\n` : "") +
-          (parameters.email ? `📧 **Email:** ${parameters.email}\n` : "") +
-          (parameters.phone ? `📱 **Phone:** ${parameters.phone}\n` : "") +
-          (parameters.status ? `📊 **Status:** ${parameters.status}\n` : "") +
-          (parameters.title ? `💼 **Title:** ${parameters.title}\n` : "") +
-          (parameters.leadSource ? `🌐 **Source:** ${parameters.leadSource}\n` : "") +
-          (parameters.industry ? `🏭 **Industry:** ${parameters.industry}\n` : "")
-        )
-      );
-      return `Successfully updated Salesforce lead ${leadId}`;
+      await context.sendActivity(`✅ Lead updated successfully (ID: ${leadId}).`);
     } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to update lead: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to update lead: ${response.message || "Unknown error"}`;
+      await context.sendActivity(`❌ Failed to update lead: ${response.message || "Unknown error"}.`);
     }
   } catch (error) {
-    console.error("Error updating Salesforce lead:", error);
-    const errorMessage = error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error updating lead: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
+    console.error("Error in UpdateSalesforceLead:", error);
+    await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
   }
 });
 
@@ -522,6 +500,126 @@ app.ai.action("GetSalesforceOpportunities", async (context, state, parameters) =
     }));
 
     state.conversation.formattedOpportunities = JSON.stringify(formattedOpportunities, null, 2);
+
+    // Create Adaptive Card
+    const adaptiveCard = {
+      type: "AdaptiveCard",
+      version: "1.4",
+      body: [
+        {
+          type: "TextBlock",
+          text: "🎯 Your Recent Opportunities",
+          size: "Large",
+          weight: "Bolder",
+          color: "Light"
+        },
+        {
+          type: "TextBlock",
+          text: `Found ${records.length} opportunities`,
+          size: "Medium",
+          color: "Good",
+          spacing: "Small"
+        },
+        ...formattedOpportunities.slice(0, 10).map((opportunity, index) => ({
+          type: "Container",
+          style: "emphasis",
+          spacing: "Medium",
+          items: [
+            {
+              type: "ColumnSet",
+              columns: [
+                {
+                  type: "Column",
+                  width: "stretch",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: `${index + 1}. ${opportunity.name}`,
+                      weight: "Bolder",
+                      size: "Medium",
+                      wrap: true,
+                      color: "Light"
+                    },
+                    {
+                      type: "TextBlock",
+                      text: `Account: ${opportunity.accountName}`,
+                      color: "Light",
+                      size: "Small",
+                      spacing: "None"
+                    }
+                  ]
+                },
+                {
+                  type: "Column",
+                  width: "auto",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: opportunity.amount,
+                      weight: "Bolder",
+                      size: "Medium",
+                      color: "Good",
+                      horizontalAlignment: "Right"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "ColumnSet",
+              spacing: "Small",
+              columns: [
+                {
+                  type: "Column",
+                  width: "stretch",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: `Stage: ${opportunity.stage}`,
+                      size: "Small",
+                      color: "Light"
+                    }
+                  ]
+                },
+                {
+                  type: "Column",
+                  width: "auto",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: `Close: ${opportunity.closeDate}`,
+                      size: "Small",
+                      color: "Light",
+                      horizontalAlignment: "Right"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }))
+      ]
+    };
+
+    // If there are more than 10 opportunities, add a note
+    if (formattedOpportunities.length > 10) {
+      adaptiveCard.body.push({
+        type: "TextBlock",
+        text: `... and ${formattedOpportunities.length - 10} more opportunities`,
+        size: "Small",
+        color: "Attention",
+        horizontalAlignment: "Center",
+        spacing: "Medium"
+      });
+    }
+
+    const cardAttachment = MessageFactory.attachment({
+      contentType: "application/vnd.microsoft.card.adaptive",
+      content: adaptiveCard
+    });
+
+    await context.sendActivity(cardAttachment);
+    
     return `Retrieved ${records.length} opportunities successfully`;
   } catch (error) {
     console.error("Error fetching Salesforce opportunities:", error);
@@ -577,88 +675,118 @@ app.ai.action("CreateSalesforceOpportunity", async (context, state, parameters) 
   }
 });
 
+
+
 app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) => {
   try {
+    console.log("UpdateSalesforceOpportunity called with:", parameters);
     initializeConversationState(state);
-
-    if (!parameters.opportunityId) {
-      await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Opportunity ID to update an opportunity.")
+ 
+    const config = require("../config");
+    const axios = require("axios");
+ 
+    let opportunityId = parameters.opportunityId;
+ 
+    // 1. Try finding opportunity by name first if no ID provided
+    if (!opportunityId && (parameters.opportunityName || parameters.name)) {
+      const opportunityName = parameters.opportunityName || parameters.name;
+      const nameQuery = `SELECT Id, Name FROM Opportunity WHERE Name LIKE '%${opportunityName}%' LIMIT 200`;
+      
+      const nameResponse = await axios.get(
+        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       );
-      return "Missing required parameters";
+ 
+      if (nameResponse.data.records.length === 1) {
+        opportunityId = nameResponse.data.records[0].Id;
+      } else if (nameResponse.data.records.length > 1) {
+        await context.sendActivity("⚠ Multiple opportunities found by name. Please refine search.");
+        return;
+      } else if (nameResponse.data.records.length === 0) {
+        await context.sendActivity("❌ No matching Salesforce opportunity found.");
+        return;
+      }
     }
-
+ 
+    if (!opportunityId) {
+      await context.sendActivity("❌ Could not find a matching opportunity by provided details.");
+      return;
+    }
+ 
+    // 2. Build update object
     const updateFields = {
-      ...(parameters.name && { Name: parameters.name }),
+      ...(parameters.newName && { Name: parameters.newName }),
       ...(parameters.stageName && { StageName: parameters.stageName }),
-      ...(parameters.amount && { Amount: parameters.amount }),
+      ...(parameters.stage && { StageName: parameters.stage }),
+      ...(parameters.amount && { Amount: parseFloat(parameters.amount.toString().replace(/[$,]/g, '')) }),
       ...(parameters.closeDate && { CloseDate: parameters.closeDate }),
       ...(parameters.description && { Description: parameters.description }),
-      ...(parameters.probability && { Probability: parameters.probability }),
-      ...(parameters.accountId && { AccountId: parameters.accountId }),
+      ...(parameters.probability && { Probability: parseInt(parameters.probability) }),
+      ...(parameters.accountId && { AccountId: parameters.accountId })
     };
-
+ 
     if (Object.keys(updateFields).length === 0) {
-      await context.sendActivity(
-        MessageFactory.text("❌ No fields provided to update. Please include at least one field like name, stage, etc.")
-      );
-      return "No fields provided to update";
+      await context.sendActivity("❌ No fields provided to update.");
+      return;
     }
-
-    console.log(`Updating opportunity ${parameters.opportunityId} in Salesforce CRM...`);
-
-    const response = await updateSalesforceOpportunity(context, state, parameters.opportunityId, updateFields);
-
+ 
+    console.log(`Updating opportunity ${opportunityId} with fields:`, updateFields);
+    const { updateSalesforceOpportunity } = require("../salesforce");
+    const response = await updateSalesforceOpportunity(context, state, opportunityId, updateFields);
+ 
     if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Opportunity Updated Successfully!**\n\n` +
-          `🆔 **Opportunity ID:** ${parameters.opportunityId}\n` +
-          (parameters.name ? `📋 **Name:** ${parameters.name}\n` : "") +
-          (parameters.stageName ? `📊 **Stage:** ${parameters.stageName}\n` : "") +
-          (parameters.amount ? `💰 **Amount:** $${parameters.amount}\n` : "") +
-          (parameters.closeDate ? `📅 **Close Date:** ${parameters.closeDate}\n` : "") +
-          (parameters.description ? `📝 **Description:** ${parameters.description}\n` : "") +
-          (parameters.probability ? `📈 **Probability:** ${parameters.probability}%\n` : "")
-        )
-      );
-      return `Successfully updated Salesforce opportunity ${parameters.opportunityId}`;
+      await context.sendActivity(`✅ Opportunity updated successfully (ID: ${opportunityId}).`);
     } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to update opportunity: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to update opportunity: ${response.message || "Unknown error"}`;
+      await context.sendActivity(`❌ Failed to update opportunity: ${response.message || "Unknown error"}.`);
     }
   } catch (error) {
-    console.error("Error updating Salesforce opportunity:", error);
-    const errorMessage = error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error updating opportunity: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
+    console.error("Error in UpdateSalesforceOpportunity:", error);
+    await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
   }
 });
+
+// Updated app.js - Delete Action
 
 app.ai.action("DeleteSalesforceOpportunity", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
 
-    if (!parameters.opportunityId) {
+    // Accept both opportunityId and opportunityName parameters
+    const opportunityIdentifier = parameters.opportunityId || parameters.opportunityName || parameters.name;
+
+    if (!opportunityIdentifier) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Opportunity ID to delete an opportunity.")
+        MessageFactory.text("❌ Missing required information. I need either the Opportunity ID or Opportunity Name to delete an opportunity.")
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting opportunity ${parameters.opportunityId} from Salesforce CRM...`);
+    console.log(`Deleting opportunity "${opportunityIdentifier}" from Salesforce CRM...`);
 
-    const response = await deleteSalesforceOpportunity(context, state, parameters.opportunityId);
+    const response = await deleteSalesforceOpportunity(context, state, opportunityIdentifier);
 
     if (response.status === "success") {
       await context.sendActivity(
-        MessageFactory.text(`✅ **Opportunity Deleted Successfully!**\n\n🆔 **Opportunity ID:** ${parameters.opportunityId}`)
+        MessageFactory.text(
+          `✅ **Opportunity Deleted Successfully!**\n\n` +
+          `🆔 **Opportunity ID:** ${response.opportunityId}\n` +
+          `📋 **Opportunity Name:** ${response.opportunityName}`
+        )
       );
-      return `Successfully deleted opportunity ${parameters.opportunityId}`;
+      return `Successfully deleted Salesforce opportunity "${response.opportunityName}" (${response.opportunityId})`;
+    } else if (response.multipleResults) {
+      // Handle multiple results case
+      const opportunityList = response.multipleResults
+        .map((opp, index) => `${index + 1}. ${opp.Name} (${opp.Id})`)
+        .join('\n');
+      
+      await context.sendActivity(
+        MessageFactory.text(
+          `❌ **Multiple opportunities found:**\n\n${opportunityList}\n\n` +
+          `Please be more specific with the opportunity name, or use the exact Opportunity ID.`
+        )
+      );
+      return `Multiple opportunities found with similar names`;
     } else {
       await context.sendActivity(
         MessageFactory.text(`❌ Failed to delete opportunity: ${response.message || "Unknown error"}.`)
