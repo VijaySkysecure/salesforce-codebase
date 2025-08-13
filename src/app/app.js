@@ -239,7 +239,6 @@ await context.sendActivity({
 });
 
 
-
 app.ai.action("CreateSalesforceLead", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
@@ -284,7 +283,6 @@ app.ai.action("CreateSalesforceLead", async (context, state, parameters) => {
     return `Error occurred: ${errorMessage}`;
   }
 });
-
 
 
 app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
@@ -378,7 +376,6 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
     await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
   }
 });
-
 
 
 
@@ -680,7 +677,6 @@ app.ai.action("CreateSalesforceOpportunity", async (context, state, parameters) 
 });
 
 
-
 app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) => {
   try {
     console.log("UpdateSalesforceOpportunity called with:", parameters);
@@ -749,7 +745,6 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
   }
 });
 
-// Updated app.js - Delete Action
 
 app.ai.action("DeleteSalesforceOpportunity", async (context, state, parameters) => {
   try {
@@ -1333,13 +1328,14 @@ app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
     // 1. Try finding task by subject if no ID provided
     if (!taskId && parameters.taskSubject) {
       const taskSubject = parameters.taskSubject;
-      const nameQuery = `SELECT Id, Subject FROM Task WHERE Name LIKE '%${taskSubject}%' OR Subject LIKE '%${taskSubject}%' LIMIT 200`;
+      const nameQuery = `SELECT Id, Subject FROM Task WHERE Subject LIKE '%${taskSubject}%' LIMIT 200`;
       
       const nameResponse = await axios.get(
         `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
         { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       );
-
+      
+      console.log("Name query response:", nameResponse.data.records);
       if (nameResponse.data.records.length === 1) {
         taskId = nameResponse.data.records[0].Id;
       } else if (nameResponse.data.records.length > 1) {
@@ -1380,7 +1376,7 @@ app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
       await context.sendActivity(`❌ Failed to update task: ${response.message || "Unknown error"}.`);
     }
   } catch (error) {
-    console.error("Error in UpdateSalesforceTask:", error);
+    console.error("Error in UpdateSalesforceTask:", error.response.data);
     await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
   }
 });
