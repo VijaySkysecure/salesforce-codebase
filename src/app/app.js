@@ -1,6 +1,8 @@
 const { MemoryStorage, MessageFactory, CardFactory, ActivityTypes } = require("botbuilder");
 const path = require("path");
 const config = require("../config");
+const chrono = require("chrono-node");
+const moment = require("moment-timezone");
 
 // See https://aka.ms/teams-ai-library to learn more about the Teams AI library.
 const { Application, ActionPlanner, OpenAIModel, PromptManager } = require("@microsoft/teams-ai");
@@ -61,6 +63,8 @@ const {
   createSalesforceContact,
   updateSalesforceContact,
   deleteSalesforceContact,
+  createSalesforceMeeting,
+  findSalesforceContactOrAccount
 } = require("../salesforce");
 
 
@@ -803,192 +807,8 @@ app.ai.action("DeleteSalesforceOpportunity", async (context, state, parameters) 
   }
 });
 
-// ======================= TASKS =======================
 
-app.ai.action("GetSalesforceTasks", async (context, state, parameters) => {
-  console.log("GetSalesforceTasks action called with parameters:", parameters);
-  try {
-    initializeConversationState(state);
-    
-    const limit = Math.min(parameters.limit || 20, 200);
-    const query = `SELECT Id, Subject, Status, Priority, ActivityDate, Description FROM Task ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const axios = require("axios");
-    
-    const headers = {
-      Authorization: `Bearer ${config.salesforceAccessToken}`,
-      "Content-Type": "application/json",
-    };
-
-    const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.lightning.force.com/services/data/v60.0/query?q=${encodeURIComponent(query)}`,
-      { headers }
-    );
-
-    const records = response.data.records || [];
-
-    if (records.length === 0) {
-      await context.sendActivity(MessageFactory.text("📊 No tasks found in your Salesforce CRM."));
-      return "No tasks found";
-    }
-
-    const formattedTasks = records.map((t) => ({
-      id: t.Id,
-      subject: t.Subject || "—",
-      status: t.Status || "—",
-      priority: t.Priority || "—",
-      activityDate: t.ActivityDate || "—",
-      description: t.Description || "—",
-    }));
-
-    state.conversation.formattedTasks = JSON.stringify(formattedTasks, null, 2);
-    return `Retrieved ${records.length} tasks successfully`;
-  } catch (error) {
-    console.error("Error fetching Salesforce tasks:", error);
-    const errorMessage = error.response?.data?.[0]?.message || error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error retrieving tasks: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
-  }
-});
-
-app.ai.action("CreateSalesforceTask", async (context, state, parameters) => {
-  try {
-    initializeConversationState(state);
-
-    const subject = parameters.subject;
-    const status = parameters.status || "Not Started";
-
-    if (!subject) {
-      await context.sendActivity(
-        MessageFactory.text("❌ Missing required fields. Please provide `subject`.")
-      );
-      return "Missing required parameters";
-    }
-
-    const response = await createSalesforceTask(context, state, { subject, status });
-
-    if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Task Created Successfully!**\n\n` +
-          `🆔 **Task ID:** ${response.id}\n` +
-          `📋 **Subject:** ${subject}\n` +
-          `📊 **Status:** ${status}`
-        )
-      );
-      return `Successfully created Salesforce task ${subject}`;
-    } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to create task: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to create task: ${response.message || "Unknown error"}`;
-    }
-  } catch (error) {
-    console.error("Error creating Salesforce task:", error);
-    const errorMessage = error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error creating task: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
-  }
-});
-
-app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
-  try {
-    initializeConversationState(state);
-
-    if (!parameters.taskId) {
-      await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Task ID to update a task.")
-      );
-      return "Missing required parameters";
-    }
-
-    const updateFields = {
-      ...(parameters.subject && { Subject: parameters.subject }),
-      ...(parameters.status && { Status: parameters.status }),
-      ...(parameters.priority && { Priority: parameters.priority }),
-      ...(parameters.activityDate && { ActivityDate: parameters.activityDate }),
-      ...(parameters.description && { Description: parameters.description }),
-    };
-
-    if (Object.keys(updateFields).length === 0) {
-      await context.sendActivity(
-        MessageFactory.text("❌ No fields provided to update. Please include at least one field like subject, status, etc.")
-      );
-      return "No fields provided to update";
-    }
-
-    console.log(`Updating task ${parameters.taskId} in Salesforce CRM...`);
-
-    const response = await updateSalesforceTask(context, state, parameters.taskId, updateFields);
-
-    if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Task Updated Successfully!**\n\n` +
-          `🆔 **Task ID:** ${parameters.taskId}\n` +
-          (parameters.subject ? `📋 **Subject:** ${parameters.subject}\n` : "") +
-          (parameters.status ? `📊 **Status:** ${parameters.status}\n` : "") +
-          (parameters.priority ? `⭐ **Priority:** ${parameters.priority}\n` : "") +
-          (parameters.activityDate ? `📅 **Activity Date:** ${parameters.activityDate}\n` : "") +
-          (parameters.description ? `📝 **Description:** ${parameters.description}\n` : "")
-        )
-      );
-      return `Successfully updated Salesforce task ${parameters.taskId}`;
-    } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to update task: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to update task: ${response.message || "Unknown error"}`;
-    }
-  } catch (error) {
-    console.error("Error updating Salesforce task:", error);
-    const errorMessage = error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error updating task: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
-  }
-});
-
-app.ai.action("DeleteSalesforceTask", async (context, state, parameters) => {
-  try {
-    initializeConversationState(state);
-
-    if (!parameters.taskId) {
-      await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Task ID to delete a task.")
-      );
-      return "Missing required parameters";
-    }
-
-    console.log(`Deleting task ${parameters.taskId} from Salesforce CRM...`);
-
-    const response = await deleteSalesforceTask(context, state, parameters.taskId);
-
-    if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(`✅ **Task Deleted Successfully!**\n\n🆔 **Task ID:** ${parameters.taskId}`)
-      );
-      return `Successfully deleted task ${parameters.taskId}`;
-    } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to delete task: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to delete task: ${response.message || "Unknown error"}`;
-    }
-  } catch (error) {
-    console.error("Error deleting Salesforce task:", error);
-    const errorMessage = error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error deleting task: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
-  }
-});
 
 // ======================= ACCOUNTS =======================
 
@@ -1008,7 +828,7 @@ app.ai.action("GetSalesforceAccounts", async (context, state, parameters) => {
     };
 
     const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.lightning.force.com/services/data/v60.0/query?q=${encodeURIComponent(query)}`,
+      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
       { headers }
     );
 
@@ -1029,6 +849,126 @@ app.ai.action("GetSalesforceAccounts", async (context, state, parameters) => {
     }));
 
     state.conversation.formattedAccounts = JSON.stringify(formattedAccounts, null, 2);
+
+    // Create Adaptive Card
+    const adaptiveCard = {
+      type: "AdaptiveCard",
+      version: "1.4",
+      body: [
+        {
+          type: "TextBlock",
+          text: "🏢 Your Salesforce Accounts",
+          size: "Large",
+          weight: "Bolder",
+          color: "Light"
+        },
+        {
+          type: "TextBlock",
+          text: `Found ${records.length} accounts`,
+          size: "Medium",
+          color: "Good",
+          spacing: "Small"
+        },
+        ...formattedAccounts.slice(0, 10).map((account, index) => ({
+          type: "Container",
+          style: "emphasis",
+          spacing: "Medium",
+          items: [
+            {
+              type: "ColumnSet",
+              columns: [
+                {
+                  type: "Column",
+                  width: "stretch",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: `${index + 1}. ${account.name}`,
+                      weight: "Bolder",
+                      size: "Medium",
+                      wrap: true,
+                      color: "Light"
+                    },
+                    {
+                      type: "TextBlock",
+                      text: `Industry: ${account.industry}`,
+                      color: "Light",
+                      size: "Small",
+                      spacing: "None"
+                    }
+                  ]
+                },
+                {
+                  type: "Column",
+                  width: "auto",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: account.type,
+                      weight: "Bolder",
+                      size: "Small",
+                      color: "Accent",
+                      horizontalAlignment: "Right"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "ColumnSet",
+              spacing: "Small",
+              columns: [
+                {
+                  type: "Column",
+                  width: "stretch",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: `📞 ${account.phone}`,
+                      size: "Small",
+                      color: "Light"
+                    }
+                  ]
+                },
+                {
+                  type: "Column",
+                  width: "auto",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: account.website !== "—" ? `🌐 ${account.website}` : "🌐 —",
+                      size: "Small",
+                      color: "Light",
+                      horizontalAlignment: "Right"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }))
+      ]
+    };
+
+    // If there are more than 10 accounts, add a note
+    if (formattedAccounts.length > 10) {
+      adaptiveCard.body.push({
+        type: "TextBlock",
+        text: `... and ${formattedAccounts.length - 10} more accounts`,
+        size: "Small",
+        color: "Attention",
+        horizontalAlignment: "Center",
+        spacing: "Medium"
+      });
+    }
+
+    const cardAttachment = MessageFactory.attachment({
+      contentType: "application/vnd.microsoft.card.adaptive",
+      content: adaptiveCard
+    });
+
+    await context.sendActivity(cardAttachment);
+    
     return `Retrieved ${records.length} accounts successfully`;
   } catch (error) {
     console.error("Error fetching Salesforce accounts:", error);
@@ -1082,85 +1022,113 @@ app.ai.action("CreateSalesforceAccount", async (context, state, parameters) => {
 
 app.ai.action("UpdateSalesforceAccount", async (context, state, parameters) => {
   try {
+    console.log("UpdateSalesforceAccount called with:", parameters);
     initializeConversationState(state);
-
-    if (!parameters.accountId) {
-      await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Account ID to update an account.")
+ 
+    const config = require("../config");
+    const axios = require("axios");
+ 
+    let accountId = parameters.accountId;
+ 
+    // 1. Try finding account by name first if no ID provided
+    if (!accountId && (parameters.accountName || parameters.name)) {
+      const accountName = parameters.accountName || parameters.name;
+      const nameQuery = `SELECT Id, Name FROM Account WHERE Name LIKE '%${accountName}%' LIMIT 200`;
+      
+      const nameResponse = await axios.get(
+        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       );
-      return "Missing required parameters";
+ 
+      if (nameResponse.data.records.length === 1) {
+        accountId = nameResponse.data.records[0].Id;
+      } else if (nameResponse.data.records.length > 1) {
+        await context.sendActivity("⚠ Multiple accounts found by name. Please refine search.");
+        return;
+      } else if (nameResponse.data.records.length === 0) {
+        await context.sendActivity("❌ No matching Salesforce account found.");
+        return;
+      }
     }
-
+ 
+    if (!accountId) {
+      await context.sendActivity("❌ Could not find a matching account by provided details.");
+      return;
+    }
+ 
+    // 2. Build update object
     const updateFields = {
-      ...(parameters.name && { Name: parameters.name }),
+      ...(parameters.newName && { Name: parameters.newName }),
       ...(parameters.type && { Type: parameters.type }),
       ...(parameters.industry && { Industry: parameters.industry }),
       ...(parameters.phone && { Phone: parameters.phone }),
       ...(parameters.website && { Website: parameters.website }),
-      ...(parameters.description && { Description: parameters.description }),
+      ...(parameters.description && { Description: parameters.description })
     };
-
+ 
     if (Object.keys(updateFields).length === 0) {
-      await context.sendActivity(
-        MessageFactory.text("❌ No fields provided to update. Please include at least one field like name, type, etc.")
-      );
-      return "No fields provided to update";
+      await context.sendActivity("❌ No fields provided to update.");
+      return;
     }
-
-    console.log(`Updating account ${parameters.accountId} in Salesforce CRM...`);
-
-    const response = await updateSalesforceAccount(context, state, parameters.accountId, updateFields);
-
+ 
+    console.log(`Updating account ${accountId} with fields:`, updateFields);
+    const { updateSalesforceAccount } = require("../salesforce");
+    const response = await updateSalesforceAccount(context, state, accountId, updateFields);
+ 
     if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Account Updated Successfully!**\n\n` +
-          `🆔 **Account ID:** ${parameters.accountId}\n` +
-          (parameters.name ? `🏢 **Name:** ${parameters.name}\n` : "") +
-          (parameters.type ? `📋 **Type:** ${parameters.type}\n` : "") +
-          (parameters.industry ? `🏭 **Industry:** ${parameters.industry}\n` : "") +
-          (parameters.phone ? `📱 **Phone:** ${parameters.phone}\n` : "") +
-          (parameters.website ? `🌐 **Website:** ${parameters.website}\n` : "") +
-          (parameters.description ? `📝 **Description:** ${parameters.description}\n` : "")
-        )
-      );
-      return `Successfully updated Salesforce account ${parameters.accountId}`;
+      await context.sendActivity(`✅ Account updated successfully (ID: ${accountId}).`);
     } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to update account: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to update account: ${response.message || "Unknown error"}`;
+      await context.sendActivity(`❌ Failed to update account: ${response.message || "Unknown error"}.`);
     }
   } catch (error) {
-    console.error("Error updating Salesforce account:", error);
-    const errorMessage = error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error updating account: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
+    console.error("Error in UpdateSalesforceAccount:", error);
+    await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
   }
 });
+
 
 app.ai.action("DeleteSalesforceAccount", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
 
-    if (!parameters.accountId) {
+    // Accept both accountId and accountName parameters
+    const accountIdentifier = parameters.accountId || parameters.accountName || parameters.name;
+
+    if (!accountIdentifier) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Account ID to delete an account.")
+        MessageFactory.text("❌ Missing required information. I need either the Account ID or Account Name to delete an account.")
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting account ${parameters.accountId} from Salesforce CRM...`);
+    console.log(`Deleting account "${accountIdentifier}" from Salesforce CRM...`);
 
-    const response = await deleteSalesforceAccount(context, state, parameters.accountId);
+    // Call centralized Salesforce deletion logic (ID or name resolution happens inside)
+    const { deleteSalesforceAccount } = require("../salesforce");
+    const response = await deleteSalesforceAccount(context, state, accountIdentifier);
 
     if (response.status === "success") {
       await context.sendActivity(
-        MessageFactory.text(`✅ **Account Deleted Successfully!**\n\n🆔 **Account ID:** ${parameters.accountId}`)
+        MessageFactory.text(
+          `✅ **Account Deleted Successfully!**\n\n` +
+          `🆔 **Account ID:** ${response.accountId}\n` +
+          `📋 **Account Name:** ${response.accountName}`
+        )
       );
-      return `Successfully deleted account ${parameters.accountId}`;
+      return `Successfully deleted Salesforce account "${response.accountName}" (${response.accountId})`;
+    } else if (response.multipleResults) {
+      // Handle multiple results
+      const accountList = response.multipleResults
+        .map((acc, index) => `${index + 1}. ${acc.Name} (${acc.Id})`)
+        .join('\n');
+
+      await context.sendActivity(
+        MessageFactory.text(
+          `❌ **Multiple accounts found:**\n\n${accountList}\n\n` +
+          `Please be more specific with the account name, or use the exact Account ID.`
+        )
+      );
+      return `Multiple accounts found with similar names`;
     } else {
       await context.sendActivity(
         MessageFactory.text(`❌ Failed to delete account: ${response.message || "Unknown error"}.`)
@@ -1177,25 +1145,328 @@ app.ai.action("DeleteSalesforceAccount", async (context, state, parameters) => {
   }
 });
 
-// ======================= CONTACTS =======================
 
-app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
-  console.log("GetSalesforceContacts action called with parameters:", parameters);
+// ======================= TASKS =======================
+
+app.ai.action("GetSalesforceTasks", async (context, state, parameters) => {
+  console.log("GetSalesforceTasks action called with parameters:", parameters);
+
   try {
     initializeConversationState(state);
-    
+
     const limit = Math.min(parameters.limit || 20, 200);
-    const query = `SELECT Id, FirstName, LastName, Email, Phone, Title, AccountId, Account.Name FROM Contact ORDER BY CreatedDate DESC LIMIT ${limit}`;
+    const query = `SELECT Id, Subject, Status, Priority, ActivityDate, Description 
+                   FROM Task 
+                   ORDER BY CreatedDate DESC 
+                   LIMIT ${limit}`;
 
     const axios = require("axios");
-    
+
     const headers = {
       Authorization: `Bearer ${config.salesforceAccessToken}`,
       "Content-Type": "application/json",
     };
 
     const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.lightning.force.com/services/data/v60.0/query?q=${encodeURIComponent(query)}`,
+      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
+      { headers }
+    );
+
+    const records = response.data.records || [];
+
+    if (records.length === 0) {
+      await context.sendActivity({
+        type: "message",
+        attachments: [
+          {
+            contentType: "application/vnd.microsoft.card.adaptive",
+            content: {
+              type: "AdaptiveCard",
+              version: "1.5",
+              body: [
+                {
+                  type: "TextBlock",
+                  text: "📊 No tasks found",
+                  weight: "Bolder",
+                  size: "Medium",
+                  color: "Attention"
+                }
+              ]
+            }
+          }
+        ]
+      });
+      return "No tasks found";
+    }
+
+    const taskItems = records.map((t) => {
+      return {
+        type: "Container",
+        style: "emphasis",
+        items: [
+          { type: "TextBlock", text: `**${t.Subject || "—"}**`, weight: "Bolder", size: "Medium" },
+          { type: "TextBlock", text: `🗓 Due: ${t.ActivityDate || "—"}`, spacing: "Small" },
+          { type: "TextBlock", text: `📌 Status: ${t.Status || "—"}`, spacing: "Small" },
+          { type: "TextBlock", text: `⚡ Priority: ${t.Priority || "—"}`, spacing: "Small" },
+          { type: "TextBlock", text: t.Description || "No description", wrap: true, spacing: "Small" }
+        ]
+      };
+    });
+
+    const adaptiveCard = {
+      type: "AdaptiveCard",
+      version: "1.5",
+      body: [
+        {
+          type: "TextBlock",
+          text: `📋 Salesforce Tasks (${records.length})`,
+          weight: "Bolder",
+          size: "Large",
+          separator: true
+        },
+        {
+          type: "Container",
+          items: taskItems
+        }
+      ],
+      $schema: "http://adaptivecards.io/schemas/adaptive-card.json"
+    };
+
+    await context.sendActivity({
+      type: "message",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: adaptiveCard
+        }
+      ]
+    });
+
+    state.conversation.formattedTasks = JSON.stringify(records, null, 2);
+    return `Retrieved ${records.length} tasks successfully`;
+  } catch (error) {
+    console.error("Error fetching Salesforce tasks:", error);
+    const errorMessage = error.response?.data?.[0]?.message || error.message || "Unknown error";
+
+    const errorCard = {
+      type: "AdaptiveCard",
+      version: "1.5",
+      body: [
+        {
+          type: "TextBlock",
+          text: `❌ Error retrieving tasks: ${errorMessage}`,
+          weight: "Bolder",
+          color: "Attention",
+          wrap: true
+        }
+      ]
+    };
+
+    await context.sendActivity({
+      type: "message",
+      attachments: [
+        {
+          contentType: "application/vnd.microsoft.card.adaptive",
+          content: errorCard
+        }
+      ]
+    });
+
+    return `Error occurred: ${errorMessage}`;
+  }
+});
+
+
+app.ai.action("CreateSalesforceTask", async (context, state, parameters) => {
+  try {
+    console.log("CreateSalesforceTask action called with parameters:", parameters);
+    initializeConversationState(state);
+
+    const subject = parameters.subject;
+    const status = parameters.status || "Not Started";
+
+    if (!subject) {
+      await context.sendActivity(
+        MessageFactory.text("❌ Missing required fields. Please provide `subject`.")
+      );
+      return "Missing required parameters";
+    }
+
+    const response = await createSalesforceTask(context, state, { subject, status });
+
+    if (response.status === "success") {
+      await context.sendActivity(
+        MessageFactory.text(
+          `✅ **Task Created Successfully!**\n\n` +
+          `🆔 **Task ID:** ${response.id}\n` +
+          `📋 **Subject:** ${subject}\n` +
+          `📊 **Status:** ${status}`
+        )
+      );
+      return `Successfully created Salesforce task ${subject}`;
+    } else {
+      await context.sendActivity(
+        MessageFactory.text(`❌ Failed to create task: ${response.message || "Unknown error"}.`)
+      );
+      return `Failed to create task: ${response.message || "Unknown error"}`;
+    }
+  } catch (error) {
+    console.error("Error creating Salesforce task:", error);
+    const errorMessage = error.message || "Unknown error";
+    await context.sendActivity(
+      MessageFactory.text(`❌ Error creating task: ${errorMessage}. Please try again.`)
+    );
+    return `Error occurred: ${errorMessage}`;
+  }
+});
+
+app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
+  try {
+    console.log("UpdateSalesforceTask called with:", parameters);
+    initializeConversationState(state);
+
+    const config = require("../config");
+    const axios = require("axios");
+
+    let taskId = parameters.taskId;
+
+    // 1. Try finding task by subject if no ID provided
+    if (!taskId && parameters.taskSubject) {
+      const taskSubject = parameters.taskSubject;
+      const nameQuery = `SELECT Id, Subject FROM Task WHERE Name LIKE '%${taskSubject}%' OR Subject LIKE '%${taskSubject}%' LIMIT 200`;
+      
+      const nameResponse = await axios.get(
+        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      );
+
+      if (nameResponse.data.records.length === 1) {
+        taskId = nameResponse.data.records[0].Id;
+      } else if (nameResponse.data.records.length > 1) {
+        await context.sendActivity("⚠ Multiple tasks found with that subject. Please refine your search.");
+        return;
+      } else if (nameResponse.data.records.length === 0) {
+        await context.sendActivity("❌ No matching Salesforce task found.");
+        return;
+      }
+    }
+
+    if (!taskId) {
+      await context.sendActivity("❌ Could not find a matching task by provided details.");
+      return;
+    }
+
+    // 2. Build update object
+    const updateFields = {
+      ...(parameters.subject && { Subject: parameters.subject }),
+      ...(parameters.status && { Status: parameters.status }),
+      ...(parameters.priority && { Priority: parameters.priority }),
+      ...(parameters.activityDate && { ActivityDate: parameters.activityDate }),
+      ...(parameters.description && { Description: parameters.description })
+    };
+
+    if (Object.keys(updateFields).length === 0) {
+      await context.sendActivity("❌ No fields provided to update.");
+      return;
+    }
+
+    console.log(`Updating task ${taskId} with fields:`, updateFields);
+    const { updateSalesforceTask } = require("../salesforce");
+    const response = await updateSalesforceTask(context, state, taskId, updateFields);
+
+    if (response.status === "success") {
+      await context.sendActivity(`✅ Task updated successfully (ID: ${taskId}).`);
+    } else {
+      await context.sendActivity(`❌ Failed to update task: ${response.message || "Unknown error"}.`);
+    }
+  } catch (error) {
+    console.error("Error in UpdateSalesforceTask:", error);
+    await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
+  }
+});
+
+
+
+app.ai.action("DeleteSalesforceTask", async (context, state, parameters) => {
+  try {
+    initializeConversationState(state);
+
+    // Accept both taskId and taskSubject parameters
+    const taskIdentifier = parameters.taskId || parameters.taskSubject || parameters.subject;
+
+    if (!taskIdentifier) {
+      await context.sendActivity(
+        MessageFactory.text("❌ Missing required information. I need either the Task ID or Task Subject to delete a task.")
+      );
+      return "Missing required parameters";
+    }
+
+    console.log(`Deleting task "${taskIdentifier}" from Salesforce CRM...`);
+
+    // Call centralized Salesforce deletion logic (ID or name resolution happens inside)
+    const { deleteSalesforceTask } = require("../salesforce");
+    const response = await deleteSalesforceTask(context, state, taskIdentifier);
+
+    if (response.status === "success") {
+      await context.sendActivity(
+        MessageFactory.text(
+          `✅ **Task Deleted Successfully!**\n\n` +
+          `🆔 **Task ID:** ${response.taskId}\n` +
+          `📝 **Task Subject:** ${response.taskSubject}`
+        )
+      );
+      return `Successfully deleted Salesforce task "${response.taskSubject}" (${response.taskId})`;
+    } else if (response.multipleResults) {
+      // Handle multiple results
+      const taskList = response.multipleResults
+        .map((t, index) => `${index + 1}. ${t.Subject} (${t.Id})`)
+        .join('\n');
+
+      await context.sendActivity(
+        MessageFactory.text(
+          `❌ **Multiple tasks found:**\n\n${taskList}\n\n` +
+          `Please be more specific with the task subject, or use the exact Task ID.`
+        )
+      );
+      return `Multiple tasks found with similar subjects`;
+    } else {
+      await context.sendActivity(
+        MessageFactory.text(`❌ Failed to delete task: ${response.message || "Unknown error"}.`)
+      );
+      return `Failed to delete task: ${response.message || "Unknown error"}`;
+    }
+  } catch (error) {
+    console.error("Error deleting Salesforce task:", error);
+    const errorMessage = error.message || "Unknown error";
+    await context.sendActivity(
+      MessageFactory.text(`❌ Error deleting task: ${errorMessage}. Please try again.`)
+    );
+    return `Error occurred: ${errorMessage}`;
+  }
+});
+
+
+
+
+// ======================= CONTACTS =======================
+
+app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
+  console.log("GetSalesforceContacts action called with parameters:", parameters);
+  try {
+    initializeConversationState(state);
+
+    const limit = Math.min(parameters.limit || 20, 200);
+    const query = `SELECT Id, FirstName, LastName, Email, Phone, Title, AccountId, Account.Name FROM Contact ORDER BY CreatedDate DESC LIMIT ${limit}`;
+
+    const axios = require("axios");
+
+    const headers = {
+      Authorization: `Bearer ${config.salesforceAccessToken}`,
+      "Content-Type": "application/json",
+    };
+
+    const response = await axios.get(
+      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
       { headers }
     );
 
@@ -1216,6 +1487,120 @@ app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
     }));
 
     state.conversation.formattedContacts = JSON.stringify(formattedContacts, null, 2);
+
+    // Create Adaptive Card
+    const adaptiveCard = {
+      type: "AdaptiveCard",
+      version: "1.4",
+      body: [
+        {
+          type: "TextBlock",
+          text: "📇 Your Salesforce Contacts",
+          size: "Large",
+          weight: "Bolder",
+          color: "Light"
+        },
+        {
+          type: "TextBlock",
+          text: `Found ${records.length} contacts`,
+          size: "Medium",
+          color: "Good",
+          spacing: "Small"
+        },
+        ...formattedContacts.slice(0, 10).map((contact, index) => ({
+          type: "Container",
+          style: "emphasis",
+          spacing: "Medium",
+          items: [
+            {
+              type: "ColumnSet",
+              columns: [
+                {
+                  type: "Column",
+                  width: "stretch",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: `${index + 1}. ${contact.name}`,
+                      weight: "Bolder",
+                      size: "Medium",
+                      wrap: true,
+                      color: "Light"
+                    },
+                    {
+                      type: "TextBlock",
+                      text: `Title: ${contact.title}`,
+                      color: "Light",
+                      size: "Small",
+                      spacing: "None"
+                    },
+                    {
+                      type: "TextBlock",
+                      text: `Account: ${contact.accountName}`,
+                      color: "Light",
+                      size: "Small",
+                      spacing: "None"
+                    }
+                  ]
+                },
+                {
+                  type: "Column",
+                  width: "auto",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: contact.email,
+                      size: "Small",
+                      color: "Accent",
+                      wrap: true,
+                      horizontalAlignment: "Right"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "ColumnSet",
+              spacing: "Small",
+              columns: [
+                {
+                  type: "Column",
+                  width: "stretch",
+                  items: [
+                    {
+                      type: "TextBlock",
+                      text: `📞 ${contact.phone}`,
+                      size: "Small",
+                      color: "Light"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }))
+      ]
+    };
+
+    // If there are more than 10 contacts, add a note
+    if (formattedContacts.length > 10) {
+      adaptiveCard.body.push({
+        type: "TextBlock",
+        text: `... and ${formattedContacts.length - 10} more contacts`,
+        size: "Small",
+        color: "Attention",
+        horizontalAlignment: "Center",
+        spacing: "Medium"
+      });
+    }
+
+    const cardAttachment = MessageFactory.attachment({
+      contentType: "application/vnd.microsoft.card.adaptive",
+      content: adaptiveCard
+    });
+
+    await context.sendActivity(cardAttachment);
+
     return `Retrieved ${records.length} contacts successfully`;
   } catch (error) {
     console.error("Error fetching Salesforce contacts:", error);
@@ -1226,6 +1611,7 @@ app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
     return `Error occurred: ${errorMessage}`;
   }
 });
+
 
 app.ai.action("CreateSalesforceContact", async (context, state, parameters) => {
   try {
@@ -1270,15 +1656,54 @@ app.ai.action("CreateSalesforceContact", async (context, state, parameters) => {
 
 app.ai.action("UpdateSalesforceContact", async (context, state, parameters) => {
   try {
+    console.log("UpdateSalesforceContact called with:", parameters);
     initializeConversationState(state);
 
-    if (!parameters.contactId) {
-      await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Contact ID to update a contact.")
+    const config = require("../config");
+    const axios = require("axios");
+
+    let contactId = parameters.contactId;
+
+    // 1. Try finding contact by name if no ID provided
+    if (!contactId && (parameters.contactName || parameters.name || parameters.firstName || parameters.lastName)) {
+      const contactName = parameters.contactName || parameters.name || "";
+      const firstName = parameters.firstName || "";
+      const lastName = parameters.lastName || "";
+
+      let nameQuery = "";
+      if (contactName) {
+        // Search by full name string
+        nameQuery = `SELECT Id, FirstName, LastName FROM Contact WHERE Name LIKE '%${contactName}%' LIMIT 200`;
+      } else if (firstName && lastName) {
+        nameQuery = `SELECT Id, FirstName, LastName FROM Contact WHERE FirstName LIKE '%${firstName}%' AND LastName LIKE '%${lastName}%' LIMIT 200`;
+      } else if (firstName) {
+        nameQuery = `SELECT Id, FirstName, LastName FROM Contact WHERE FirstName LIKE '%${firstName}%' LIMIT 200`;
+      } else if (lastName) {
+        nameQuery = `SELECT Id, FirstName, LastName FROM Contact WHERE LastName LIKE '%${lastName}%' LIMIT 200`;
+      }
+
+      const nameResponse = await axios.get(
+        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       );
-      return "Missing required parameters";
+
+      if (nameResponse.data.records.length === 1) {
+        contactId = nameResponse.data.records[0].Id;
+      } else if (nameResponse.data.records.length > 1) {
+        await context.sendActivity("⚠ Multiple contacts found by that name. Please refine search.");
+        return;
+      } else if (nameResponse.data.records.length === 0) {
+        await context.sendActivity("❌ No matching Salesforce contact found.");
+        return;
+      }
     }
 
+    if (!contactId) {
+      await context.sendActivity("❌ Could not find a matching contact with the provided details.");
+      return;
+    }
+
+    // 2. Build update object
     const updateFields = {
       ...(parameters.firstName && { FirstName: parameters.firstName }),
       ...(parameters.lastName && { LastName: parameters.lastName }),
@@ -1286,70 +1711,72 @@ app.ai.action("UpdateSalesforceContact", async (context, state, parameters) => {
       ...(parameters.phone && { Phone: parameters.phone }),
       ...(parameters.title && { Title: parameters.title }),
       ...(parameters.accountId && { AccountId: parameters.accountId }),
-      ...(parameters.department && { Department: parameters.department }),
+      ...(parameters.department && { Department: parameters.department })
     };
 
     if (Object.keys(updateFields).length === 0) {
-      await context.sendActivity(
-        MessageFactory.text("❌ No fields provided to update. Please include at least one field like firstName, email, etc.")
-      );
-      return "No fields provided to update";
+      await context.sendActivity("❌ No fields provided to update. Please include at least one field like firstName, email, etc.");
+      return;
     }
 
-    console.log(`Updating contact ${parameters.contactId} in Salesforce CRM...`);
-
-    const response = await updateSalesforceContact(context, state, parameters.contactId, updateFields);
+    console.log(`Updating contact ${contactId} with fields:`, updateFields);
+    const { updateSalesforceContact } = require("../salesforce");
+    const response = await updateSalesforceContact(context, state, contactId, updateFields);
 
     if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Contact Updated Successfully!**\n\n` +
-          `🆔 **Contact ID:** ${parameters.contactId}\n` +
-          (parameters.firstName ? `👤 **First Name:** ${parameters.firstName}\n` : "") +
-          (parameters.lastName ? `👤 **Last Name:** ${parameters.lastName}\n` : "") +
-          (parameters.email ? `📧 **Email:** ${parameters.email}\n` : "") +
-          (parameters.phone ? `📱 **Phone:** ${parameters.phone}\n` : "") +
-          (parameters.title ? `💼 **Title:** ${parameters.title}\n` : "") +
-          (parameters.department ? `🏢 **Department:** ${parameters.department}\n` : "")
-        )
-      );
-      return `Successfully updated Salesforce contact ${parameters.contactId}`;
+      await context.sendActivity(`✅ Contact updated successfully (ID: ${contactId}).`);
     } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to update contact: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to update contact: ${response.message || "Unknown error"}`;
+      await context.sendActivity(`❌ Failed to update contact: ${response.message || "Unknown error"}.`);
     }
   } catch (error) {
-    console.error("Error updating Salesforce contact:", error);
-    const errorMessage = error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error updating contact: ${errorMessage}. Please try again.`)
-    );
-    return `Error occurred: ${errorMessage}`;
+    console.error("Error in UpdateSalesforceContact:", error);
+    await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
   }
 });
+
 
 app.ai.action("DeleteSalesforceContact", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
 
-    if (!parameters.contactId) {
+    // Accept both contactId and contactName parameters
+    const contactIdentifier = parameters.contactId || parameters.contactName || parameters.name;
+
+    if (!contactIdentifier) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need at least: Contact ID to delete a contact.")
+        MessageFactory.text("❌ Missing required information. I need either the Contact ID or Contact Name to delete a contact.")
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting contact ${parameters.contactId} from Salesforce CRM...`);
+    console.log(`Deleting contact "${contactIdentifier}" from Salesforce CRM...`);
 
-    const response = await deleteSalesforceContact(context, state, parameters.contactId);
+    // Centralized deletion logic (ID or name resolution happens inside)
+    const { deleteSalesforceContact } = require("../salesforce");
+    const response = await deleteSalesforceContact(context, state, contactIdentifier);
 
     if (response.status === "success") {
       await context.sendActivity(
-        MessageFactory.text(`✅ **Contact Deleted Successfully!**\n\n🆔 **Contact ID:** ${parameters.contactId}`)
+        MessageFactory.text(
+          `✅ **Contact Deleted Successfully!**\n\n` +
+          `🆔 **Contact ID:** ${response.contactId}\n` +
+          (response.contactName ? `📋 **Contact Name:** ${response.contactName}` : "")
+        )
       );
-      return `Successfully deleted contact ${parameters.contactId}`;
+      return `Successfully deleted Salesforce contact "${response.contactName || response.contactId}"`;
+    } else if (response.multipleResults) {
+      // Multiple matches case
+      const contactList = response.multipleResults
+        .map((c, index) => `${index + 1}. ${c.FirstName || ""} ${c.LastName || ""} (${c.Id})`)
+        .join("\n");
+
+      await context.sendActivity(
+        MessageFactory.text(
+          `❌ **Multiple contacts found:**\n\n${contactList}\n\n` +
+          `Please refine the contact name or provide the exact Contact ID.`
+        )
+      );
+      return `Multiple contacts found with similar names`;
     } else {
       await context.sendActivity(
         MessageFactory.text(`❌ Failed to delete contact: ${response.message || "Unknown error"}.`)
@@ -1365,6 +1792,101 @@ app.ai.action("DeleteSalesforceContact", async (context, state, parameters) => {
     return `Error occurred: ${errorMessage}`;
   }
 });
+
+
+
+
+app.ai.action("CreateSalesforceMeeting", async (context, state, parameters) => {
+  try {
+    initializeConversationState(state);
+
+    const { subject, startDateTime, withName } = parameters;
+
+    if (!subject || !startDateTime) {
+      await context.sendActivity("❌ Please provide both the meeting subject and start date/time.");
+      return;
+    }
+
+    // Detect user’s local timezone (fallback if unavailable)
+    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+
+    // Parse natural language date/time in local timezone
+    let parsedStartLocal = chrono.parseDate(startDateTime, new Date(), { forwardDate: true });
+    if (!parsedStartLocal) {
+      await context.sendActivity("❌ Could not understand the meeting start date/time.");
+      return;
+    }
+
+    // Create moment objects first, then do the timezone conversions
+    const startMoment = moment.tz(parsedStartLocal, userTimeZone);
+    const endMoment = moment.tz(parsedStartLocal, userTimeZone).add(1, "hour");
+
+    // Convert to UTC format for Salesforce
+    const startISO = startMoment.utc().format("YYYY-MM-DDTHH:mm:ss[Z]");
+    const endISO = endMoment.utc().format("YYYY-MM-DDTHH:mm:ss[Z]");
+
+    let relatedRecordId = null;
+    let relatedRecordType = null;
+
+    // If a contact or account name is given, search in Salesforce
+    if (withName) {
+      const { findSalesforceContactOrAccount } = require("../salesforce");
+      const found = await findSalesforceContactOrAccount(withName);
+
+      if (found && found.Id) {
+        relatedRecordId = found.Id;
+        relatedRecordType = found.type;
+      } else {
+        // If not found, create accordingly
+        if (parameters.withNameType === "Account") {
+          const { createSalesforceAccount } = require("../salesforce");
+          const accRes = await createSalesforceAccount({ Name: withName });
+          relatedRecordId = accRes.Id;
+          relatedRecordType = "Account";
+        } else {
+          const { createSalesforceContact } = require("../salesforce");
+          const conRes = await createSalesforceContact({
+            FirstName: withName.split(" ")[0],
+            LastName: withName.split(" ")[1] || ""
+          });
+          relatedRecordId = conRes.Id;
+          relatedRecordType = "Contact";
+        }
+      }
+    }
+
+    // Create the meeting
+    const { createSalesforceMeeting } = require("../salesforce");
+    const meetingRes = await createSalesforceMeeting({
+      subject,
+      startDateTime: startISO,
+      endDateTime: endISO,
+      whoId: relatedRecordType === "Contact" ? relatedRecordId : null,
+      whatId: relatedRecordType === "Account" ? relatedRecordId : null
+    });
+
+    if (meetingRes.status === "success") {
+      // Use parsedStartLocal instead of undefined "slot"
+      const localDisplay = moment(parsedStartLocal)
+        .tz("Asia/Kolkata")
+        .format("hh:mm A, DD MMM YYYY");
+
+      await context.sendActivity(
+        `✅ Meeting **"${subject}"** scheduled on ${localDisplay} with ${withName || "no specific person"}.`
+      );
+    } else {
+      await context.sendActivity(`❌ Failed to schedule meeting: ${meetingRes.message}`);
+    }
+
+  } catch (err) {
+    console.error("Error creating Salesforce meeting:", err);
+    await context.sendActivity(`❌ Error creating meeting: ${err.message}`);
+  }
+});
+
+
+
+
 
 
 app.activity(ActivityTypes.Message, async (context, state) => {
@@ -1394,13 +1916,13 @@ app.activity(ActivityTypes.Message, async (context, state) => {
     // }
 
     console.log(`Processing message from user: ${userId}, authenticated: ${state.conversation.isAuthenticated}, state:`, state.conversation);
-    await context.sendActivity(
-        MessageFactory.text(
-          "👋 **Welcome to your AI-powered Salesforce CRM assistant!**\n\n" +
-          "To get started, we need to connect your SalesForce CRM account. " +
-          "Once connected, you can ask me questions about your CRM data using natural language!"
-        )
-      );
+    // await context.sendActivity(
+        // MessageFactory.text(
+        //   "👋 **Welcome to your AI-powered Salesforce CRM assistant!**\n\n" +
+        //   "To get started, we need to connect your SalesForce CRM account. " +
+        //   "Once connected, you can ask me questions about your CRM data using natural language!"
+        // )
+      // );
     // if (!state.conversation.isAuthenticated) {
     //   await context.sendActivity(
     //     MessageFactory.text(

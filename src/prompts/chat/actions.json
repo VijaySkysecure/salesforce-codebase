@@ -179,7 +179,7 @@
 },
   {
     "name": "CreateSalesforceTask",
-    "description": "Creates a new Task in Salesforce CRM. Provide subject and optionally status.",
+    "description": "Creates a Task in Salesforce CRM. Provide subject and optionally status.",
     "parameters": {
       "type": "object",
       "properties": {
@@ -204,29 +204,30 @@
   },
   {
     "name": "UpdateSalesforceTask",
-    "description": "Updates any fields of a Salesforce Task. You must provide the task ID and at least one field to update.",
+    "description": "Updates any fields of a Salesforce Task. You must provide either the task ID or the task subject, and at least one field to update.",
     "parameters": {
       "type": "object",
       "properties": {
-        "taskId": { "type": "string" },
-        "subject": { "type": "string" },
-        "status": { "type": "string" },
+        "taskId": { "type": "string", "description": "The Salesforce Task ID (if known)" },
+        "subject": { "type": "string", "description": "The subject of the Task (alternative to Task ID)" },
+        "status": { "type": "string", "description": "Task status (e.g., Not Started, In Progress, Completed)" },
         "priority": { "type": "string", "description": "Task priority (e.g., High, Normal, Low)" },
         "activityDate": { "type": "string", "description": "Due date in YYYY-MM-DD format" },
-        "description": { "type": "string" }
+        "description": { "type": "string", "description": "Description or notes for the task" }
       },
-      "required": ["taskId"]
+      "required": ["subject"]
     }
   },
   {
     "name": "DeleteSalesforceTask",
-    "description": "Deletes a Salesforce Task using its unique Task ID.",
+    "description": "Deletes a Salesforce Task using either its unique Task ID or Task Subject.",
     "parameters": {
       "type": "object",
       "properties": {
-        "taskId": { "type": "string" }
+        "taskId": { "type": "string", "description": "The Salesforce Task ID." },
+        "taskSubject": { "type": "string", "description": "The subject of the Salesforce Task (if Task ID is not known)." }
       },
-      "required": ["taskId"]
+      "required": []
     }
   },
   {
@@ -253,34 +254,75 @@
       }
     }
   },
-  {
-    "name": "UpdateSalesforceAccount",
-    "description": "Updates any fields of a Salesforce Account. You must provide the account ID and at least one field to update.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "accountId": { "type": "string" },
-        "name": { "type": "string" },
-        "type": { "type": "string", "description": "Account type (e.g., Customer - Direct, Customer - Channel, Channel Partner / Reseller, Installation Partner, Technology Partner, Other)" },
-        "industry": { "type": "string" },
-        "phone": { "type": "string" },
-        "website": { "type": "string" },
-        "description": { "type": "string" }
+{
+  "name": "UpdateSalesforceAccount",
+  "description": "Updates any fields of a Salesforce Account. You can provide either the account ID or account name to identify the account, and at least one field to update.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "accountId": { 
+        "type": "string", 
+        "description": "The Salesforce Account ID (18-character ID starting with 001)" 
       },
-      "required": ["accountId"]
-    }
-  },
-  {
-    "name": "DeleteSalesforceAccount",
-    "description": "Deletes a Salesforce Account using its unique Account ID.",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "accountId": { "type": "string" }
+      "accountName": { 
+        "type": "string", 
+        "description": "The name of the account to update (alternative to accountId)" 
       },
-      "required": ["accountId"]
-    }
-  },
+      "name": { 
+        "type": "string", 
+        "description": "Alternative parameter for account name (same as accountName)" 
+      },
+      "newName": { 
+        "type": "string", 
+        "description": "New name to set for the account" 
+      },
+      "type": { 
+        "type": "string", 
+        "description": "Account type (e.g., Customer - Direct, Customer - Channel, Channel Partner / Reseller, Installation Partner, Technology Partner, Other)" 
+      },
+      "industry": { 
+        "type": "string", 
+        "description": "Account industry (e.g., Technology, Healthcare, Manufacturing, Finance, etc.)" 
+      },
+      "phone": { 
+        "type": "string", 
+        "description": "Account phone number" 
+      },
+      "website": { 
+        "type": "string", 
+        "description": "Account website URL" 
+      },
+      "description": { 
+        "type": "string", 
+        "description": "Account description or notes" 
+      }
+    },
+    "required": ["accountName", "name"]
+  }
+},
+{
+  "name": "DeleteSalesforceAccount",
+  "description": "Deletes a Salesforce Account using either the Account ID or Account Name. If multiple accounts match the name, it will show a list for the user to choose from.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "accountId": {
+        "type": "string",
+        "description": "The Salesforce Account ID (15 or 18 characters). Preferred if available for direct deletion."
+      },
+      "accountName": {
+        "type": "string",
+        "description": "The name of the account to delete. Can be a partial name - will search for matches."
+      },
+      "name": {
+        "type": "string",
+        "description": "Alternative parameter for account name (same as accountName)."
+      }
+    },
+    "required": [],
+    "additionalProperties": false
+  }
+},
   {
     "name": "CreateSalesforceContact",
     "description": "Creates a new Contact in Salesforce CRM. Provide first name and last name.",
@@ -308,31 +350,66 @@
   },
   {
     "name": "UpdateSalesforceContact",
-    "description": "Updates any fields of a Salesforce Contact. You must provide the contact ID and at least one field to update.",
+    "description": "Updates any fields of a Salesforce Contact. You must provide either the contact ID or name information (contactName, firstName, lastName) to identify the contact, along with at least one field to update.",
     "parameters": {
       "type": "object",
       "properties": {
-        "contactId": { "type": "string" },
-        "firstName": { "type": "string" },
-        "lastName": { "type": "string" },
-        "email": { "type": "string" },
-        "phone": { "type": "string" },
-        "title": { "type": "string" },
-        "accountId": { "type": "string", "description": "Salesforce Account ID to associate with this contact" },
-        "department": { "type": "string" }
+        "contactId": { "type": "string", "description": "The Salesforce Contact ID. Provide this if you know it." },
+        "contactName": { "type": "string", "description": "Full name of the contact to search for (if contactId is not provided)." },
+        "firstName": { "type": "string", "description": "First name of the contact (can be used for lookup or update)." },
+        "lastName": { "type": "string", "description": "Last name of the contact (can be used for lookup or update)." },
+        "email": { "type": "string", "description": "Email address of the contact." },
+        "phone": { "type": "string", "description": "Phone number of the contact." },
+        "title": { "type": "string", "description": "Job title of the contact." },
+        "accountId": { "type": "string", "description": "Salesforce Account ID to associate with this contact." },
+        "department": { "type": "string", "description": "Department of the contact." }
       },
-      "required": ["contactId"]
+      "required": []
     }
   },
   {
     "name": "DeleteSalesforceContact",
-    "description": "Deletes a Salesforce Contact using its unique Contact ID.",
+    "description": "Deletes a Salesforce Contact using either its unique Contact ID or Contact Name. If a name is provided, the system will search for the contact and delete it if exactly one match is found.",
     "parameters": {
       "type": "object",
       "properties": {
-        "contactId": { "type": "string" }
+        "contactId": {
+          "type": "string",
+          "description": "The unique Salesforce Contact ID (starts with '003')"
+        },
+        "contactName": {
+          "type": "string",
+          "description": "The full or partial name of the contact to delete"
+        },
+        "name": {
+          "type": "string",
+          "description": "Alias for contactName"
+        }
       },
-      "required": ["contactId"]
+      "required": []
+    }
+  },
+  {
+    "name": "CreateSalesforceMeeting",
+    "description": "Creates a Salesforce Calendar Event (Meeting) with a contact or account. Defaults end time to 1 hour after start time if not specified.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "subject": {
+          "type": "string",
+          "description": "Title or subject of the meeting."
+        },
+        "startDateTime": {
+          "type": "string",
+          "description": "Start date and time of the meeting in natural language or ISO format (e.g., 'tomorrow at 3pm', '2025-08-16T11:00')."
+        },
+        "withName": {
+          "type": "string",
+          "description": "The name of the contact or account to meet with. If not found, will be created automatically."
+        }
+      },
+      "required": ["subject", "startDateTime"]
     }
   }
+
 ]

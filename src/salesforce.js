@@ -232,7 +232,7 @@ async function deleteSalesforceLead(context, state, leadId) {
 async function createSalesforceTask(context, state, taskData) {
   try {
     const response = await axios.post(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Task`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Task`,
       {
         Subject: taskData.subject,
         Status: taskData.status,
@@ -259,7 +259,7 @@ async function createSalesforceTask(context, state, taskData) {
 async function updateSalesforceTask(context, state, taskId, fields) {
   try {
     const res = await axios.patch(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Task/${taskId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Task/${taskId}`,
       fields,
       { headers: getHeaders() }
     );
@@ -275,13 +275,47 @@ async function updateSalesforceTask(context, state, taskId, fields) {
 }
 
 // Delete task by ID
-async function deleteSalesforceTask(context, state, taskId) {
+async function deleteSalesforceTask(context, state, taskIdentifier) {
   try {
+    let taskId = taskIdentifier;
+    let taskSubject = taskIdentifier;
+
+    // If the identifier doesn't look like a Salesforce ID
+    if (!taskIdentifier.match(/^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$/)) {
+      // Try to find by subject
+      const searchResult = await findTaskBySubject(taskIdentifier);
+
+      if (searchResult.status === "error") {
+        return { status: "error", message: `Could not search for task: ${searchResult.message}` };
+      }
+
+      if (searchResult.tasks.length === 0) {
+        return { status: "error", message: `No task found with subject containing: "${taskIdentifier}"` };
+      }
+
+      if (searchResult.tasks.length > 1) {
+        const names = searchResult.tasks.map(t => `"${t.Subject}"`).join(", ");
+        return { 
+          status: "error", 
+          message: `Multiple tasks found: ${names}. Please be more specific with the task subject.`,
+          multipleResults: searchResult.tasks
+        };
+      }
+
+      taskId = searchResult.tasks[0].Id;
+      taskSubject = searchResult.tasks[0].Subject;
+    }
+
     await axios.delete(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Task/${taskId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Task/${taskId}`,
       { headers: getHeaders() }
     );
-    return { status: "success" };
+
+    return { 
+      status: "success", 
+      taskId: taskId,
+      taskSubject: taskSubject
+    };
   } catch (err) {
     console.error("Salesforce Delete Task Error:", err.response?.data || err.message);
     return {
@@ -291,13 +325,30 @@ async function deleteSalesforceTask(context, state, taskId) {
   }
 }
 
+async function findTaskBySubject(subjectFragment) {
+  try {
+    const query = `SELECT Id, Subject FROM Task WHERE Subject LIKE '%${subjectFragment.replace(/'/g, "\\'")}%' LIMIT 200`;
+
+    const searchResponse = await axios.get(
+      `${SALESFORCE_INSTANCE_URL}/query?q=${encodeURIComponent(query)}`,
+      { headers: getHeaders() }
+    );
+
+    return { status: "success", tasks: searchResponse.data.records };
+  } catch (err) {
+    console.error("Salesforce Task Search Error:", err.response?.data || err.message);
+    return { status: "error", message: err.message };
+  }
+}
+
+
 // ======================= ACCOUNTS =======================
 
 // Create a new Salesforce account
 async function createSalesforceAccount(context, state, accountData) {
   try {
     const response = await axios.post(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Account`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Account`,
       {
         Name: accountData.name,
       },
@@ -323,7 +374,7 @@ async function createSalesforceAccount(context, state, accountData) {
 async function updateSalesforceAccount(context, state, accountId, fields) {
   try {
     const res = await axios.patch(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Account/${accountId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Account/${accountId}`,
       fields,
       { headers: getHeaders() }
     );
@@ -338,14 +389,49 @@ async function updateSalesforceAccount(context, state, accountId, fields) {
   }
 }
 
+
 // Delete account by ID
-async function deleteSalesforceAccount(context, state, accountId) {
+async function deleteSalesforceAccount(context, state, accountIdentifier) {
   try {
+    let accountId = accountIdentifier;
+    let accountName = accountIdentifier;
+
+    // If the identifier doesn't look like a Salesforce ID
+    if (!accountIdentifier.match(/^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$/)) {
+      // Try to find by name
+      const searchResult = await findAccountByName(accountIdentifier);
+
+      if (searchResult.status === "error") {
+        return { status: "error", message: `Could not search for account: ${searchResult.message}` };
+      }
+
+      if (searchResult.accounts.length === 0) {
+        return { status: "error", message: `No account found with name containing: "${accountIdentifier}"` };
+      }
+
+      if (searchResult.accounts.length > 1) {
+        const names = searchResult.accounts.map(acc => `"${acc.Name}"`).join(", ");
+        return { 
+          status: "error", 
+          message: `Multiple accounts found: ${names}. Please be more specific with the account name.`,
+          multipleResults: searchResult.accounts
+        };
+      }
+
+      accountId = searchResult.accounts[0].Id;
+      accountName = searchResult.accounts[0].Name;
+    }
+
     await axios.delete(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Account/${accountId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Account/${accountId}`,
       { headers: getHeaders() }
     );
-    return { status: "success" };
+
+    return { 
+      status: "success", 
+      accountId: accountId,
+      accountName: accountName
+    };
   } catch (err) {
     console.error("Salesforce Delete Account Error:", err.response?.data || err.message);
     return {
@@ -354,6 +440,23 @@ async function deleteSalesforceAccount(context, state, accountId) {
     };
   }
 }
+async function findAccountByName(nameFragment) {
+  try {
+    const query = `SELECT Id, Name FROM Account WHERE Name LIKE '%${nameFragment.replace(/'/g, "\\'")}%' LIMIT 200`;
+
+    const searchResponse = await axios.get(
+      `${SALESFORCE_INSTANCE_URL}/query?q=${encodeURIComponent(query)}`,
+      { headers: getHeaders() }
+    );
+
+    return { status: "success", accounts: searchResponse.data.records };
+  } catch (err) {
+    console.error("Salesforce Account Search Error:", err.response?.data || err.message);
+    return { status: "error", message: err.message };
+  }
+}
+
+
 
 // ======================= CONTACTS =======================
 
@@ -361,7 +464,7 @@ async function deleteSalesforceAccount(context, state, accountId) {
 async function createSalesforceContact(context, state, contactData) {
   try {
     const response = await axios.post(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Contact`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Contact`,
       {
         FirstName: contactData.firstName,
         LastName: contactData.lastName,
@@ -384,11 +487,11 @@ async function createSalesforceContact(context, state, contactData) {
   }
 }
 
-// Update a contact by ID
+// Update a contact
 async function updateSalesforceContact(context, state, contactId, fields) {
   try {
     const res = await axios.patch(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Contact/${contactId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Contact/${contactId}`,
       fields,
       { headers: getHeaders() }
     );
@@ -403,22 +506,115 @@ async function updateSalesforceContact(context, state, contactId, fields) {
   }
 }
 
-// Delete contact by ID
-async function deleteSalesforceContact(context, state, contactId) {
+// Delete contact
+async function deleteSalesforceContact(context, state, identifier) {
   try {
+    let contactId = identifier;
+    let contactName = null;
+
+    // Check if identifier is a valid Salesforce Contact ID
+    const isSalesforceId = /^003[0-9A-Za-z]{12}$/.test(identifier);
+
+    if (!isSalesforceId) {
+      console.log(`Looking up contact by name: ${identifier}`);
+
+      const query = `SELECT Id, FirstName, LastName FROM Contact WHERE Name LIKE '%${identifier}%'`;
+      const searchRes = await axios.get(
+        `${SALESFORCE_INSTANCE_URL}/query?q=${encodeURIComponent(query)}`,
+        { headers: getHeaders() }
+      );
+
+      const results = searchRes.data.records;
+
+      if (results.length === 0) {
+        return { status: "error", message: `No contact found with name "${identifier}"` };
+      }
+      if (results.length > 1) {
+        return { status: "error", multipleResults: results };
+      }
+
+      contactId = results[0].Id;
+      contactName = `${results[0].FirstName || ""} ${results[0].LastName || ""}`.trim();
+    }
+
+    // Delete by ID
     await axios.delete(
-      `${SALESFORCE_INSTANCE_URL}/services/data/${SALESFORCE_API_VERSION}/sobjects/Contact/${contactId}`,
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Contact/${contactId}`,
       { headers: getHeaders() }
     );
-    return { status: "success" };
+
+    return { status: "success", contactId, contactName };
   } catch (err) {
-    console.error("Salesforce Delete Contact Error:", err.response?.data || err.message);
-    return {
-      status: "error",
-      message: err.response?.data?.[0]?.message || err.message,
-    };
+    console.error("Delete Contact Error:", err.response?.data || err.message);
+    return { status: "error", message: err.response?.data?.[0]?.message || err.message };
   }
 }
+
+
+async function createSalesforceMeeting({ subject, startDateTime, endDateTime, whoId = null, whatId = null }) { 
+  try {
+    console.log("Creating meeting with times:", {
+      receivedStart: startDateTime,
+      receivedEnd: endDateTime
+    });
+
+    const body = {
+      Subject: subject,
+      StartDateTime: startDateTime, // already UTC ISO
+      EndDateTime: endDateTime,     // already UTC ISO
+      IsAllDayEvent: false
+    };
+
+    if (whoId) body.WhoId = whoId; // Contact or Lead
+    if (whatId) body.WhatId = whatId; // Account, Opportunity, etc.
+
+    const res = await axios.post(
+      `${SALESFORCE_INSTANCE_URL}/sobjects/Event`,
+      body,
+      { headers: getHeaders() }
+    );
+
+    return { status: "success", id: res.data.id };
+  } catch (err) {
+    console.error("Create Meeting Error:", err.response?.data || err.message);
+    return { status: "error", message: err.response?.data?.[0]?.message || err.message };
+  }
+}
+
+
+
+/**
+ * Utility: Search Contact or Account by name
+ */
+async function findSalesforceContactOrAccount(name) {
+  const contactQuery = `SELECT Id, FirstName, LastName FROM Contact WHERE Name LIKE '%${name}%' LIMIT 1`;
+  const accountQuery = `SELECT Id, Name FROM Account WHERE Name LIKE '%${name}%' LIMIT 1`;
+
+  const contactRes = await axios.get(
+    `${SALESFORCE_INSTANCE_URL}/query?q=${encodeURIComponent(contactQuery)}`,
+    { headers: getHeaders() }
+  );
+
+  if (contactRes.data.records.length > 0) {
+    return { type: "Contact", ...contactRes.data.records[0] };
+  }
+
+  const accountRes = await axios.get(
+    `${SALESFORCE_INSTANCE_URL}/query?q=${encodeURIComponent(accountQuery)}`,
+    { headers: getHeaders() }
+  );
+
+  if (accountRes.data.records.length > 0) {
+    return { type: "Account", ...accountRes.data.records[0] };
+  }
+
+  return null;
+}
+
+
+
+
+
 
 module.exports = {
   // Opportunities
@@ -442,4 +638,6 @@ module.exports = {
   createSalesforceContact,
   updateSalesforceContact,
   deleteSalesforceContact,
+  createSalesforceMeeting,
+  findSalesforceContactOrAccount
 };

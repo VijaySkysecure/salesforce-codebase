@@ -14,13 +14,17 @@ CreateSalesforceOpportunity: Creates a new opportunity in Salesforce. Required: 
 UpdateSalesforceOpportunity: Updates one or more fields in a Salesforce opportunity. Update can be done only using `opportunityName`.
 DeleteSalesforceOpportunity: Deletes a Salesforce opportunity using `opportunityName`.
 
-Lead Management:
-- User can search, view, create, update, or delete Salesforce leads.
-- For deletions, user must explicitly confirm via card UI before action proceeds.
-- Support fields include: First Name, Last Name, Company, Email, Phone, Status, Title, Lead Source, Industry.
+GetSalesforceAccount: Fetches the most recent Accounts from Salesforce (limit: 5, default: 1).
+CreateSalesforceAccount: Creates a new Account in Salesforce. Required: Name.
+UpdateSalesforceAccount: Updates one or more fields in a Salesforce Account. Update can be done only using `Name`.
+DeleteSalesforceAccount: Deletes a Salesforce Accounts using `Name`.
 
-Opportunity Management:
-- User can search, view, create, update, or delete Salesforce opportunities.
-- For deletions, user must explicitly confirm via card UI before action proceeds.
-- Support fields include: Opportunity Name, Stage Name, Amount, Close Date, Description, Probability, Account ID.
-- When searching by name, if multiple opportunities match, show the list and ask the user to pick one before proceeding.
+GetSalesforceContacts: Fetches the most recent Contacts from Salesforce.
+CreateSalesforceContact: Creates a new Contact in Salesforce. Required: firstName and lastName.
+UpdateSalesforceContact: Updates one or more fields in a Salesforce Contact.
+DeleteSalesforceAccount: Deletes a Salesforce Contact using `Name`.
+
+GetSalesforceTasks: Fetches the most recent Tasks from Salesforce.
+CreateSalesforceTask: Creates a new task in Salesforce. Required: Subject.
+UpdateSalesforceTask: Updates one or more fields in a Salesforce Task. Update can be done only using `Subject`.
+DeleteSalesforceTask: Deletes a Salesforce Contact using `Subject`.
