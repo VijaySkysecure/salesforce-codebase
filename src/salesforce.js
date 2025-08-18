@@ -551,22 +551,28 @@ async function deleteSalesforceContact(context, state, identifier) {
 }
 
 
+
 async function createSalesforceMeeting({ subject, startDateTime, endDateTime, whoId = null, whatId = null }) { 
   try {
     console.log("Creating meeting with times:", {
       receivedStart: startDateTime,
-      receivedEnd: endDateTime
+      receivedEnd: endDateTime,
+      hasZSuffix: startDateTime.endsWith('Z'),
+      parsedStart: new Date(startDateTime),
+      parsedEnd: new Date(endDateTime)
     });
 
     const body = {
       Subject: subject,
-      StartDateTime: startDateTime, // already UTC ISO
-      EndDateTime: endDateTime,     // already UTC ISO
+      StartDateTime: startDateTime, // Should NOT have 'Z' suffix in Approach 2
+      EndDateTime: endDateTime,     // Should NOT have 'Z' suffix in Approach 2
       IsAllDayEvent: false
     };
 
-    if (whoId) body.WhoId = whoId; // Contact or Lead
-    if (whatId) body.WhatId = whatId; // Account, Opportunity, etc.
+    if (whoId) body.WhoId = whoId;
+    if (whatId) body.WhatId = whatId;
+
+    console.log("Sending body to Salesforce:", JSON.stringify(body, null, 2));
 
     const res = await axios.post(
       `${SALESFORCE_INSTANCE_URL}/sobjects/Event`,
@@ -574,6 +580,7 @@ async function createSalesforceMeeting({ subject, startDateTime, endDateTime, wh
       { headers: getHeaders() }
     );
 
+    console.log("Salesforce response:", res.data);
     return { status: "success", id: res.data.id };
   } catch (err) {
     console.error("Create Meeting Error:", err.response?.data || err.message);

@@ -12,7 +12,7 @@ async function initializeCosmos() {
     const { database } = await cosmosClient.databases.createIfNotExists({ id: config.cosmosDatabaseId });
     const { container } = await database.containers.createIfNotExists({
       id: config.cosmosContainerId,
-      partitionKey: { paths: ["/partitionKey"] },
+      partitionKey: { paths: ["/teamsChatId"] },
     });
     console.log("Cosmos DB initialized successfully");
     return container;
@@ -22,7 +22,28 @@ async function initializeCosmos() {
   }
 }
 
+async function storeUserToken(teamsChatId, type, tokenResponse) {
+  const container = await containerPromise;
+ 
+  const record = {
+    id: teamsChatId,
+    type,
+    teamsChatId,
+    accessToken: tokenResponse.access_token,
+    refreshToken: tokenResponse.refresh_token,
+    instance_url: tokenResponse.instance_url,
+    signature: tokenResponse.signature,
+    issuedAt: tokenResponse.issued_at,
+    expiresAt: Date.now() + tokenResponse.expires_in * 1000,
+  };
+ 
+  await container.items.upsert(record);
+  return record;
+}
+ 
+
 // Export initialized container
 module.exports = {
   container: initializeCosmos(),
+  storeUserToken
 };

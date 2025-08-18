@@ -172,9 +172,9 @@ app.ai.action("GetSalesforceLeads", async (context, state, parameters) => {
     console.log(response.data, "egbj");
 
     if (records.length === 0) {
-      await context.sendActivity(
-        MessageFactory.text("📊 No leads found in your Salesforce CRM.")
-      );
+      // await context.sendActivity(
+      //   MessageFactory.text("📊 No leads found in your Salesforce CRM.")
+      // );
       return "No leads found";
     }
 
@@ -231,9 +231,9 @@ await context.sendActivity({
   } catch (error) {
     console.error("Error fetching Salesforce leads:", error);
     const errorMessage = error.response?.data?.[0]?.message || error.message || "Unknown error";
-    await context.sendActivity(
-      MessageFactory.text(`❌ Error retrieving leads: ${errorMessage}. Please try again.`)
-    );
+    // await context.sendActivity(
+    //   MessageFactory.text(`❌ Error retrieving leads: ${errorMessage}. Please try again.`)
+    // );
     return `Error occurred: ${errorMessage}`;
   }
 });
@@ -487,7 +487,7 @@ app.ai.action("GetSalesforceOpportunities", async (context, state, parameters) =
     const records = response.data.records || [];
 
     if (records.length === 0) {
-      await context.sendActivity(MessageFactory.text("📊 No opportunities found in your Salesforce CRM."));
+      // await context.sendActivity(MessageFactory.text("📊 No opportunities found in your Salesforce CRM."));
       return "No opportunities found";
     }
 
@@ -830,7 +830,7 @@ app.ai.action("GetSalesforceAccounts", async (context, state, parameters) => {
     const records = response.data.records || [];
 
     if (records.length === 0) {
-      await context.sendActivity(MessageFactory.text("📊 No accounts found in your Salesforce CRM."));
+      // await context.sendActivity(MessageFactory.text("📊 No accounts found in your Salesforce CRM."));
       return "No accounts found";
     }
 
@@ -1469,7 +1469,7 @@ app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
     const records = response.data.records || [];
 
     if (records.length === 0) {
-      await context.sendActivity(MessageFactory.text("📊 No contacts found in your Salesforce CRM."));
+      // await context.sendActivity(MessageFactory.text("📊 No contacts found in your Salesforce CRM."));
       return "No contacts found";
     }
 
@@ -1803,28 +1803,50 @@ app.ai.action("CreateSalesforceMeeting", async (context, state, parameters) => {
       return;
     }
 
-    // Detect user’s local timezone (fallback if unavailable)
-    const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+    // Get user's timezone
+    const userTimeZone = "Asia/Kolkata"; // Hardcode to IST since you're in India
 
-    // Parse natural language date/time in local timezone
-    let parsedStartLocal = chrono.parseDate(startDateTime, new Date(), { forwardDate: true });
-    if (!parsedStartLocal) {
+    // Parse the natural language datetime
+    let parsedDate = chrono.parseDate(startDateTime, new Date(), { forwardDate: true });
+    if (!parsedDate) {
       await context.sendActivity("❌ Could not understand the meeting start date/time.");
       return;
     }
 
-    // Create moment objects first, then do the timezone conversions
-    const startMoment = moment.tz(parsedStartLocal, userTimeZone);
-    const endMoment = moment.tz(parsedStartLocal, userTimeZone).add(1, "hour");
+    console.log("Original parsed date:", parsedDate);
+    console.log("Original parsed date ISO:", parsedDate.toISOString());
 
-    // Convert to UTC format for Salesforce
-    const startISO = startMoment.utc().format("YYYY-MM-DDTHH:mm:ss[Z]");
-    const endISO = endMoment.utc().format("YYYY-MM-DDTHH:mm:ss[Z]");
+    // THE KEY FIX: Create the datetime as if the user meant local time
+    // Parse the time components from the original request
+    const chronoResult = chrono.parse(startDateTime, new Date(), { forwardDate: true })[0];
+    
+    // Get the date and time components
+    const year = chronoResult.start.get('year');
+    const month = chronoResult.start.get('month') - 1; // JavaScript months are 0-based
+    const day = chronoResult.start.get('day');
+    const hour = chronoResult.start.get('hour') || 0;
+    const minute = chronoResult.start.get('minute') || 0;
+
+    console.log("Parsed components:", { year, month: month + 1, day, hour, minute });
+
+    // Create moment in user's local timezone with these components
+    const startMoment = moment.tz({ year, month, day, hour, minute }, userTimeZone);
+    const endMoment = startMoment.clone().add(1, 'hour');
+
+    console.log("Start moment in IST:", startMoment.format("YYYY-MM-DD HH:mm:ss Z"));
+    console.log("End moment in IST:", endMoment.format("YYYY-MM-DD HH:mm:ss Z"));
+
+    // Convert to UTC for Salesforce
+    const startISO = startMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ');
+    const endISO = endMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ');
+
+    console.log("Start ISO for Salesforce (with IST offset):", startISO);
+    console.log("End ISO for Salesforce (with IST offset):", endISO);
 
     let relatedRecordId = null;
     let relatedRecordType = null;
 
-    // If a contact or account name is given, search in Salesforce
+    // Contact/Account search logic
     if (withName) {
       const { findSalesforceContactOrAccount } = require("../salesforce");
       const found = await findSalesforceContactOrAccount(withName);
@@ -1833,7 +1855,6 @@ app.ai.action("CreateSalesforceMeeting", async (context, state, parameters) => {
         relatedRecordId = found.Id;
         relatedRecordType = found.type;
       } else {
-        // If not found, create accordingly
         if (parameters.withNameType === "Account") {
           const { createSalesforceAccount } = require("../salesforce");
           const accRes = await createSalesforceAccount({ Name: withName });
@@ -1862,11 +1883,8 @@ app.ai.action("CreateSalesforceMeeting", async (context, state, parameters) => {
     });
 
     if (meetingRes.status === "success") {
-      // Use parsedStartLocal instead of undefined "slot"
-      const localDisplay = moment(parsedStartLocal)
-        .tz("Asia/Kolkata")
-        .format("hh:mm A, DD MMM YYYY");
-
+      // Display in local time
+      const localDisplay = startMoment.format("hh:mm A, DD MMM YYYY");
       await context.sendActivity(
         `✅ Meeting **"${subject}"** scheduled on ${localDisplay} with ${withName || "no specific person"}.`
       );
