@@ -3,6 +3,7 @@ const path = require("path");
 const config = require("../config");
 const chrono = require("chrono-node");
 const moment = require("moment-timezone");
+const {getUserToken} = require("./cosmos");
 
 // See https://aka.ms/teams-ai-library to learn more about the Teams AI library.
 const { Application, ActionPlanner, OpenAIModel, PromptManager } = require("@microsoft/teams-ai");
@@ -66,6 +67,10 @@ const {
   createSalesforceMeeting,
   findSalesforceContactOrAccount
 } = require("../salesforce");
+
+const {
+getSalesforceLoginCard
+} = require("../adaptiveCards/salesforceLoginCard");
 
 
 const defaultConversationState = {
@@ -1911,6 +1916,12 @@ app.activity(ActivityTypes.Message, async (context, state) => {
 
     console.log("context.activity:", context.activity)
     if (context.activity.text?.startsWith("/")) {
+      return;
+    }
+    const {status, accessToken, refreshToken, instanceUrl } = await getUserToken(teamsChatId, "salesforce");
+    if (!status) {
+      console.log("User is not authenticated with Salesforce, sending login card.");
+      await getSalesforceLoginCard(context, userId);
       return;
     }
 

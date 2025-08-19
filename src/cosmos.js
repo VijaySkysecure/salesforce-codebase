@@ -40,10 +40,27 @@ async function storeUserToken(teamsChatId, type, tokenResponse) {
   await container.items.upsert(record);
   return record;
 }
+
+async function getUserToken (teamsChatId, type) {
+  const container = await containerPromise;
+  const { resource: item } = await container.item(teamsChatId, teamsChatId).read();
+  if (item && item.type === type) {
+    return {
+      status: true,
+      accessToken: item.accessToken,
+      refreshToken: item.refreshToken,
+      instanceUrl: item.instanceUrl,
+    };
+  }
+  return {
+    status: false  
+  };
+}
  
 
 // Export initialized container
 module.exports = {
   container: initializeCosmos(),
-  storeUserToken
+  storeUserToken,
+  getUserToken
 };
