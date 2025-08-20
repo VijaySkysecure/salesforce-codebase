@@ -23,7 +23,7 @@ async function initializeCosmos() {
 }
 
 async function storeUserToken(teamsChatId, type, tokenResponse) {
-  const container = await containerPromise;
+  const container = await initializeCosmos();
  
   const record = {
     id: teamsChatId,
@@ -31,7 +31,7 @@ async function storeUserToken(teamsChatId, type, tokenResponse) {
     teamsChatId,
     accessToken: tokenResponse.access_token,
     refreshToken: tokenResponse.refresh_token,
-    instance_url: tokenResponse.instance_url,
+    instanceUrl: tokenResponse.instance_url,
     signature: tokenResponse.signature,
     issuedAt: tokenResponse.issued_at,
     expiresAt: Date.now() + tokenResponse.expires_in * 1000,
@@ -42,7 +42,7 @@ async function storeUserToken(teamsChatId, type, tokenResponse) {
 }
 
 async function getUserToken (teamsChatId, type) {
-  const container = await containerPromise;
+  const container = await initializeCosmos();
   const { resource: item } = await container.item(teamsChatId, teamsChatId).read();
   if (item && item.type === type) {
     return {

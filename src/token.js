@@ -1,4 +1,4 @@
-async function refreshToken (accessToken) {
+async function refreshToken (refreshToken) {
     try {
         
     }

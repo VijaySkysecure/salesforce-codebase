@@ -3,7 +3,8 @@ const path = require("path");
 const config = require("../config");
 const chrono = require("chrono-node");
 const moment = require("moment-timezone");
-const {getUserToken} = require("./cosmos");
+const {getUserToken} = require("../cosmos");
+const {httpRequest} = require("../httprequest");
 
 // See https://aka.ms/teams-ai-library to learn more about the Teams AI library.
 const { Application, ActionPlanner, OpenAIModel, PromptManager } = require("@microsoft/teams-ai");
@@ -155,26 +156,9 @@ app.ai.action("GetSalesforceLeads", async (context, state, parameters) => {
     const query = `SELECT Id, FirstName, LastName, Company, Status, Email, Phone 
                    FROM Lead ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const config = require("../config");
-    const axios = require("axios");
-    console.log("djwffeiu",
-    {
-      Authorization: `Bearer ${config.salesforceAccessToken}`,
-      "Content-Type": "application/json",
-    }
-    )
-    const headers = {
-      Authorization: `Bearer ${config.salesforceAccessToken}`,
-      "Content-Type": "application/json",
-    };
-
-    const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
-      { headers }
-    );
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`, "GET");
 
     const records = response.data.records || [];
-    console.log(response.data, "egbj");
 
     if (records.length === 0) {
       // await context.sendActivity(
@@ -260,14 +244,14 @@ app.ai.action("CreateSalesforceLead", async (context, state, parameters) => {
       );
       return "Missing required parameters";
     }
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Lead`, "POST", { firstName, lastName, company });
+    // const response = await createSalesforceLead(context, state, { firstName, lastName, company });
 
-    const response = await createSalesforceLead(context, state, { firstName, lastName, company });
-
-    if (response.status === "success") {
+    if (response.data.id) {
       await context.sendActivity(
         MessageFactory.text(
           `✅ **Lead Created Successfully!**\n\n` +
-          `🆔 **Lead ID:** ${response.id}\n` +
+          `🆔 **Lead ID:** ${response.data.id}\n` +
           `👤 **Name:** ${firstName} ${lastName}\n` +
           `🏢 **Company:** ${company}`
         )
@@ -303,10 +287,12 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
     // 1. Try finding lead by email first
     if (!leadId && parameters.email) {
       const emailQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE Email LIKE '%${parameters.email}%' LIMIT 200`;
-      const emailResponse = await axios.get(
-        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(emailQuery)}`,
-        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
-      );
+      // const emailResponse = await axios.get(
+      //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(emailQuery)}`,
+      //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      // );
+
+      const emailResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(emailQuery)}`, "GET");
  
       if (emailResponse.data.records.length === 1) {
         leadId = emailResponse.data.records[0].Id;
@@ -328,10 +314,11 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
         nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE ${firstNamePart}${andClause}${lastNamePart} LIMIT 200`;
       }
  
-      const nameResponse = await axios.get(
-        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
-        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
-      );
+      // const nameResponse = await axios.get(
+      //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+      //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      // );
+      const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
  
       if (nameResponse.data.records.length === 0) {
         await context.sendActivity("❌ No matching Salesforce lead found.");
@@ -368,14 +355,8 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
     }
  
     console.log(`Updating lead ${leadId} with fields:`, updateFields);
-    const { updateSalesforceLead } = require("../salesforce");
-    const response = await updateSalesforceLead(context, state, leadId, updateFields);
- 
-    if (response.status === "success") {
-      await context.sendActivity(`✅ Lead updated successfully (ID: ${leadId}).`);
-    } else {
-      await context.sendActivity(`❌ Failed to update lead: ${response.message || "Unknown error"}.`);
-    }
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Lead/${leadId}`, "PATCH", updateFields);
+    await context.sendActivity(`✅ Lead updated successfully (ID: ${leadId}).`);
   } catch (error) {
     console.error("Error in UpdateSalesforceLead:", error);
     await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
@@ -408,13 +389,14 @@ app.ai.action("DeleteSalesforceLead", async (context, state, parameters) => {
         nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE ${firstNamePart}${andClause}${lastNamePart} LIMIT 200`;
       }
 
-      const headers = {
-        Authorization: `Bearer ${config.salesforceAccessToken}`,
-        "Content-Type": "application/json",
-      };
+      // const headers = {
+      //   Authorization: `Bearer ${config.salesforceAccessToken}`,
+      //   "Content-Type": "application/json",
+      // };
 
-      const queryUrl = `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`;
-      const lookupResponse = await axios.get(queryUrl, { headers });
+      // const queryUrl = `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`;
+      // const lookupResponse = await axios.get(queryUrl, { headers });
+      const lookupResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
 
       if (lookupResponse.data.records.length === 0) {
         await context.sendActivity(
@@ -441,20 +423,12 @@ app.ai.action("DeleteSalesforceLead", async (context, state, parameters) => {
 
     console.log(`Deleting lead ${leadId} from Salesforce CRM...`);
     const { deleteSalesforceLead } = require("../salesforce");
-
-    const response = await deleteSalesforceLead(context, state, leadId);
-
-    if (response.status === "success") {
-      await context.sendActivity(
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Lead/${leadId}`, "DELETE");
+    await context.sendActivity(
         MessageFactory.text(`✅ **Lead Deleted Successfully!**\n\n🆔 **Lead ID:** ${leadId}`)
-      );
-      return `Successfully deleted lead ${leadId}`;
-    } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to delete lead: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to delete lead: ${response.message || "Unknown error"}`;
-    }
+    );
+    return `Successfully deleted lead ${leadId}`;
+
   } catch (error) {
     console.error("Error deleting Salesforce lead:", error);
     const errorMessage = error.message || "Unknown error";
@@ -473,21 +447,14 @@ app.ai.action("GetSalesforceOpportunities", async (context, state, parameters) =
   console.log("GetSalesforceOpportunities action called with parameters:", parameters);
   try {
     initializeConversationState(state);
-    
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+
     const limit = Math.min(parameters.limit || 20, 200);
     const query = `SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name FROM Opportunity ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const axios = require("axios");
-    
-    const headers = {
-      Authorization: `Bearer ${config.salesforceAccessToken}`,
-      "Content-Type": "application/json",
-    };
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
 
-    const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
-      { headers }
-    );
 
     const records = response.data.records || [];
 
@@ -637,9 +604,12 @@ app.ai.action("GetSalesforceOpportunities", async (context, state, parameters) =
   }
 });
 
+
 app.ai.action("CreateSalesforceOpportunity", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
     const name = parameters.name;
     const stageName = parameters.stageName || "Prospecting";
@@ -652,9 +622,10 @@ app.ai.action("CreateSalesforceOpportunity", async (context, state, parameters) 
       return "Missing required parameters";
     }
 
-    const response = await createSalesforceOpportunity(context, state, { name, stageName, closeDate });
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Opportunity`, "POST", { Name: name, StageName: stageName, CloseDate: closeDate });
 
-    if (response.status === "success") {
+
+    if (response.data.id) {
       await context.sendActivity(
         MessageFactory.text(
           `✅ **Opportunity Created Successfully!**\n\n` +
@@ -686,7 +657,8 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
   try {
     console.log("UpdateSalesforceOpportunity called with:", parameters);
     initializeConversationState(state);
- 
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
     const config = require("../config");
     const axios = require("axios");
  
@@ -697,10 +669,11 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
       const opportunityName = parameters.opportunityName || parameters.name;
       const nameQuery = `SELECT Id, Name FROM Opportunity WHERE Name LIKE '%${opportunityName}%' LIMIT 200`;
       
-      const nameResponse = await axios.get(
-        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
-        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
-      );
+      // const nameResponse = await axios.get(
+      //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+      //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      // );
+      const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
  
       if (nameResponse.data.records.length === 1) {
         opportunityId = nameResponse.data.records[0].Id;
@@ -736,14 +709,8 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
     }
  
     console.log(`Updating opportunity ${opportunityId} with fields:`, updateFields);
-    const { updateSalesforceOpportunity } = require("../salesforce");
-    const response = await updateSalesforceOpportunity(context, state, opportunityId, updateFields);
- 
-    if (response.status === "success") {
-      await context.sendActivity(`✅ Opportunity updated successfully (ID: ${opportunityId}).`);
-    } else {
-      await context.sendActivity(`❌ Failed to update opportunity: ${response.message || "Unknown error"}.`);
-    }
+    const response = await httpRequest(teamsChatId, `/sobjectsOpportunity/${opportunityId}`, "PATCH", updateFields);
+    await context.sendActivity(`✅ Opportunity updated successfully (ID: ${opportunityId}).`);
   } catch (error) {
     console.error("Error in UpdateSalesforceOpportunity:", error);
     await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
@@ -754,49 +721,71 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
 app.ai.action("DeleteSalesforceOpportunity", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
-    // Accept both opportunityId and opportunityName parameters
-    const opportunityIdentifier = parameters.opportunityId || parameters.opportunityName || parameters.name;
+    // 1. If no opportunityId is given, try to find it by name
+    let opportunityId = parameters.opportunityId;
+    if (parameters.opportunityName || parameters.name) {
+      const nameToSearch = parameters.opportunityName || parameters.name;
 
-    if (!opportunityIdentifier) {
+      const nameQuery = `SELECT Id, Name FROM Opportunity WHERE Name LIKE '%${nameToSearch}%' LIMIT 200`;
+
+      const lookupResponse = await httpRequest(
+        teamsChatId,
+        `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        "GET"
+      );
+
+      if (lookupResponse.data.records.length === 0) {
+        await context.sendActivity(
+          MessageFactory.text(`❌ No Salesforce opportunity found matching the provided name.`)
+        );
+        return "No opportunity found by name";
+      }
+      if (lookupResponse.data.records.length > 1) {
+        const opportunityList = lookupResponse.data.records
+          .map((opp, index) => `${index + 1}. ${opp.Name} (${opp.Id})`)
+          .join("\n");
+
+        await context.sendActivity(
+          MessageFactory.text(
+            `⚠ Multiple opportunities found matching the provided name:\n\n${opportunityList}\n\n` +
+            `Please refine your search.`
+          )
+        );
+        return "Multiple opportunities found by name";
+      }
+
+      opportunityId = lookupResponse.data.records[0].Id;
+    }
+
+    if (!opportunityId) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need either the Opportunity ID or Opportunity Name to delete an opportunity.")
+        MessageFactory.text("❌ Missing required information. I need either: Opportunity ID or a name to find the opportunity.")
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting opportunity "${opportunityIdentifier}" from Salesforce CRM...`);
+    console.log(`Deleting opportunity ${opportunityId} from Salesforce CRM...`);
+    const response = await httpRequest(
+      teamsChatId,
+      `/services/data/v59.0/sobjects/Opportunity/${opportunityId}`,
+      "DELETE"
+    );
 
-    const response = await deleteSalesforceOpportunity(context, state, opportunityIdentifier);
-
-    if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Opportunity Deleted Successfully!**\n\n` +
-          `🆔 **Opportunity ID:** ${response.opportunityId}\n` +
-          `📋 **Opportunity Name:** ${response.opportunityName}`
-        )
-      );
-      return `Successfully deleted Salesforce opportunity "${response.opportunityName}" (${response.opportunityId})`;
-    } else if (response.multipleResults) {
-      // Handle multiple results case
-      const opportunityList = response.multipleResults
-        .map((opp, index) => `${index + 1}. ${opp.Name} (${opp.Id})`)
-        .join('\n');
-      
-      await context.sendActivity(
-        MessageFactory.text(
-          `❌ **Multiple opportunities found:**\n\n${opportunityList}\n\n` +
-          `Please be more specific with the opportunity name, or use the exact Opportunity ID.`
-        )
-      );
-      return `Multiple opportunities found with similar names`;
-    } else {
+    if (response.status !== 204 && response.success === false) {
       await context.sendActivity(
         MessageFactory.text(`❌ Failed to delete opportunity: ${response.message || "Unknown error"}.`)
       );
       return `Failed to delete opportunity: ${response.message || "Unknown error"}`;
     }
+
+    await context.sendActivity(
+      MessageFactory.text(`✅ **Opportunity Deleted Successfully!**\n\n🆔 **Opportunity ID:** ${opportunityId}`)
+    );
+    return `Successfully deleted opportunity ${opportunityId}`;
+
   } catch (error) {
     console.error("Error deleting Salesforce opportunity:", error);
     const errorMessage = error.message || "Unknown error";
@@ -810,27 +799,20 @@ app.ai.action("DeleteSalesforceOpportunity", async (context, state, parameters) 
 
 
 
+
 // ======================= ACCOUNTS =======================
 
 app.ai.action("GetSalesforceAccounts", async (context, state, parameters) => {
   console.log("GetSalesforceAccounts action called with parameters:", parameters);
   try {
     initializeConversationState(state);
-    
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+
     const limit = Math.min(parameters.limit || 20, 200);
     const query = `SELECT Id, Name, Type, Industry, Phone, Website FROM Account ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const axios = require("axios");
-    
-    const headers = {
-      Authorization: `Bearer ${config.salesforceAccessToken}`,
-      "Content-Type": "application/json",
-    };
-
-    const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
-      { headers }
-    );
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
 
     const records = response.data.records || [];
 
@@ -983,6 +965,8 @@ app.ai.action("GetSalesforceAccounts", async (context, state, parameters) => {
 app.ai.action("CreateSalesforceAccount", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
     const name = parameters.name;
 
@@ -993,9 +977,10 @@ app.ai.action("CreateSalesforceAccount", async (context, state, parameters) => {
       return "Missing required parameters";
     }
 
-    const response = await createSalesforceAccount(context, state, { name });
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Account`, "POST", { Name: name });
 
-    if (response.status === "success") {
+
+    if (response.data.id) {
       await context.sendActivity(
         MessageFactory.text(
           `✅ **Account Created Successfully!**\n\n` +
@@ -1024,7 +1009,8 @@ app.ai.action("UpdateSalesforceAccount", async (context, state, parameters) => {
   try {
     console.log("UpdateSalesforceAccount called with:", parameters);
     initializeConversationState(state);
- 
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
     const config = require("../config");
     const axios = require("axios");
  
@@ -1035,10 +1021,11 @@ app.ai.action("UpdateSalesforceAccount", async (context, state, parameters) => {
       const accountName = parameters.accountName || parameters.name;
       const nameQuery = `SELECT Id, Name FROM Account WHERE Name LIKE '%${accountName}%' LIMIT 200`;
       
-      const nameResponse = await axios.get(
-        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
-        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
-      );
+      // const nameResponse = await axios.get(
+      //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+      //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      // );
+      const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
  
       if (nameResponse.data.records.length === 1) {
         accountId = nameResponse.data.records[0].Id;
@@ -1071,15 +1058,11 @@ app.ai.action("UpdateSalesforceAccount", async (context, state, parameters) => {
       return;
     }
  
-    console.log(`Updating account ${accountId} with fields:`, updateFields);
-    const { updateSalesforceAccount } = require("../salesforce");
-    const response = await updateSalesforceAccount(context, state, accountId, updateFields);
- 
-    if (response.status === "success") {
-      await context.sendActivity(`✅ Account updated successfully (ID: ${accountId}).`);
-    } else {
-      await context.sendActivity(`❌ Failed to update account: ${response.message || "Unknown error"}.`);
-    }
+    // console.log(`Updating account ${accountId} with fields:`, updateFields);
+    // const { updateSalesforceAccount } = require("../salesforce");
+    // const response = await updateSalesforceAccount(context, state, accountId, updateFields);
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Account/${accountId}`, "PATCH", updateFields);
+    await context.sendActivity(`✅ Account updated successfully (ID: ${accountId}).`);
   } catch (error) {
     console.error("Error in UpdateSalesforceAccount:", error);
     await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
@@ -1091,59 +1074,81 @@ app.ai.action("DeleteSalesforceAccount", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
 
-    // Accept both accountId and accountName parameters
-    const accountIdentifier = parameters.accountId || parameters.accountName || parameters.name;
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
-    if (!accountIdentifier) {
+    // 1. If no accountId is given, try to find it by name
+    let accountId = parameters.accountId;
+    if (parameters.accountName || parameters.name) {
+      const nameValue = parameters.accountName || parameters.name;
+      const nameQuery = `SELECT Id, Name FROM Account WHERE Name LIKE '%${nameValue}%' LIMIT 200`;
+
+      const lookupResponse = await httpRequest(
+        teamsChatId,
+        `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        "GET"
+      );
+
+      if (lookupResponse.data.records.length === 0) {
+        await context.sendActivity(
+          MessageFactory.text(`❌ No Salesforce account found matching the provided name.`)
+        );
+        return "No account found by name";
+      }
+
+      if (lookupResponse.data.records.length > 1) {
+        const accountList = lookupResponse.data.records
+          .map((acc, index) => `${index + 1}. ${acc.Name} (${acc.Id})`)
+          .join("\n");
+
+        await context.sendActivity(
+          MessageFactory.text(
+            `⚠ Multiple accounts found matching the provided name:\n\n${accountList}\n\nPlease refine your search.`
+          )
+        );
+        return "Multiple accounts found by name";
+      }
+
+      accountId = lookupResponse.data.records[0].Id;
+    }
+
+    // 2. If still no accountId, return error
+    if (!accountId) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need either the Account ID or Account Name to delete an account.")
+        MessageFactory.text(
+          "❌ Missing required information. I need either: Account ID or an Account Name to find the account."
+        )
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting account "${accountIdentifier}" from Salesforce CRM...`);
+    // 3. Delete account
+    console.log(`Deleting account ${accountId} from Salesforce CRM...`);
+    const response = await httpRequest(
+      teamsChatId,
+      `/services/data/v59.0/sobjects/Account/${accountId}`,
+      "DELETE"
+    );
 
-    // Call centralized Salesforce deletion logic (ID or name resolution happens inside)
-    const { deleteSalesforceAccount } = require("../salesforce");
-    const response = await deleteSalesforceAccount(context, state, accountIdentifier);
-
-    if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Account Deleted Successfully!**\n\n` +
-          `🆔 **Account ID:** ${response.accountId}\n` +
-          `📋 **Account Name:** ${response.accountName}`
-        )
-      );
-      return `Successfully deleted Salesforce account "${response.accountName}" (${response.accountId})`;
-    } else if (response.multipleResults) {
-      // Handle multiple results
-      const accountList = response.multipleResults
-        .map((acc, index) => `${index + 1}. ${acc.Name} (${acc.Id})`)
-        .join('\n');
-
-      await context.sendActivity(
-        MessageFactory.text(
-          `❌ **Multiple accounts found:**\n\n${accountList}\n\n` +
-          `Please be more specific with the account name, or use the exact Account ID.`
-        )
-      );
-      return `Multiple accounts found with similar names`;
-    } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to delete account: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to delete account: ${response.message || "Unknown error"}`;
-    }
+    await context.sendActivity(
+      MessageFactory.text(
+        `✅ **Account Deleted Successfully!**\n\n🆔 **Account ID:** ${accountId}`
+      )
+    );
+    return `Successfully deleted account ${accountId}`;
   } catch (error) {
     console.error("Error deleting Salesforce account:", error);
     const errorMessage = error.message || "Unknown error";
+
     await context.sendActivity(
-      MessageFactory.text(`❌ Error deleting account: ${errorMessage}. Please try again.`)
+      MessageFactory.text(
+        `❌ Error deleting account: ${errorMessage}. Please try again.`
+      )
     );
     return `Error occurred: ${errorMessage}`;
   }
 });
+
 
 
 // ======================= TASKS =======================
@@ -1153,6 +1158,8 @@ app.ai.action("GetSalesforceTasks", async (context, state, parameters) => {
 
   try {
     initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
     const limit = Math.min(parameters.limit || 20, 200);
     const query = `SELECT Id, Subject, Status, Priority, ActivityDate, Description 
@@ -1160,17 +1167,7 @@ app.ai.action("GetSalesforceTasks", async (context, state, parameters) => {
                    ORDER BY CreatedDate DESC 
                    LIMIT ${limit}`;
 
-    const axios = require("axios");
-
-    const headers = {
-      Authorization: `Bearer ${config.salesforceAccessToken}`,
-      "Content-Type": "application/json",
-    };
-
-    const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
-      { headers }
-    );
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
 
     const records = response.data.records || [];
 
@@ -1281,6 +1278,8 @@ app.ai.action("CreateSalesforceTask", async (context, state, parameters) => {
   try {
     console.log("CreateSalesforceTask action called with parameters:", parameters);
     initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
     const subject = parameters.subject;
     const status = parameters.status || "Not Started";
@@ -1292,9 +1291,10 @@ app.ai.action("CreateSalesforceTask", async (context, state, parameters) => {
       return "Missing required parameters";
     }
 
-    const response = await createSalesforceTask(context, state, { subject, status });
+      const response = await httpCreateRequest(teamsChatId, `/services/data/v59.0/sobjects/Task`, "POST", {Subject: subject, Status: status});
 
-    if (response.status === "success") {
+
+    if (response && response.id) {
       await context.sendActivity(
         MessageFactory.text(
           `✅ **Task Created Successfully!**\n\n` +
@@ -1320,11 +1320,13 @@ app.ai.action("CreateSalesforceTask", async (context, state, parameters) => {
   }
 });
 
+
 app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
   try {
     console.log("UpdateSalesforceTask called with:", parameters);
     initializeConversationState(state);
-
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
     const config = require("../config");
     const axios = require("axios");
 
@@ -1335,10 +1337,11 @@ app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
       const taskSubject = parameters.taskSubject;
       const nameQuery = `SELECT Id, Subject FROM Task WHERE Subject LIKE '%${taskSubject}%' LIMIT 200`;
       
-      const nameResponse = await axios.get(
-        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
-        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
-      );
+      // const nameResponse = await axios.get(
+      //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+      //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      // );
+      const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
       
       console.log("Name query response:", nameResponse.data.records);
       if (nameResponse.data.records.length === 1) {
@@ -1371,15 +1374,11 @@ app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
       return;
     }
 
-    console.log(`Updating task ${taskId} with fields:`, updateFields);
-    const { updateSalesforceTask } = require("../salesforce");
-    const response = await updateSalesforceTask(context, state, taskId, updateFields);
-
-    if (response.status === "success") {
-      await context.sendActivity(`✅ Task updated successfully (ID: ${taskId}).`);
-    } else {
-      await context.sendActivity(`❌ Failed to update task: ${response.message || "Unknown error"}.`);
-    }
+    // console.log(`Updating task ${taskId} with fields:`, updateFields);
+    // const { updateSalesforceTask } = require("../salesforce");
+    // const response = await updateSalesforceTask(context, state, taskId, updateFields);
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Task/${taskId}`, "PATCH", updateFields);
+    await context.sendActivity(`✅ Task updated successfully (ID: ${taskId}).`);
   } catch (error) {
     console.error("Error in UpdateSalesforceTask:", error.response.data);
     await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
@@ -1387,64 +1386,86 @@ app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
 });
 
 
-
 app.ai.action("DeleteSalesforceTask", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
 
-    // Accept both taskId and taskSubject parameters
-    const taskIdentifier = parameters.taskId || parameters.taskSubject || parameters.subject;
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
-    if (!taskIdentifier) {
+    // 1. If no taskId is given, try to find it by subject
+    let taskId = parameters.taskId;
+    if (parameters.taskSubject || parameters.subject) {
+      const subjectValue = parameters.taskSubject || parameters.subject;
+      const subjectQuery = `SELECT Id, Subject FROM Task WHERE Subject LIKE '%${subjectValue}%' LIMIT 200`;
+
+      const lookupResponse = await httpRequest(
+        teamsChatId,
+        `/services/data/v59.0/query?q=${encodeURIComponent(subjectQuery)}`,
+        "GET"
+      );
+
+      if (lookupResponse.data.records.length === 0) {
+        await context.sendActivity(
+          MessageFactory.text(`❌ No Salesforce task found matching the provided subject.`)
+        );
+        return "No task found by subject";
+      }
+
+      if (lookupResponse.data.records.length > 1) {
+        const taskList = lookupResponse.data.records
+          .map((t, index) => `${index + 1}. ${t.Subject} (${t.Id})`)
+          .join("\n");
+
+        await context.sendActivity(
+          MessageFactory.text(
+            `⚠ Multiple tasks found matching the provided subject:\n\n${taskList}\n\nPlease refine your search.`
+          )
+        );
+        return "Multiple tasks found by subject";
+      }
+
+      taskId = lookupResponse.data.records[0].Id;
+    }
+
+    // 2. If still no taskId, return error
+    if (!taskId) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need either the Task ID or Task Subject to delete a task.")
+        MessageFactory.text(
+          "❌ Missing required information. I need either: Task ID or a Task Subject to find the task."
+        )
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting task "${taskIdentifier}" from Salesforce CRM...`);
+    // 3. Delete task
+    console.log(`Deleting task ${taskId} from Salesforce CRM...`);
+    const response = await httpRequest(
+      teamsChatId,
+      `/services/data/v59.0/sobjects/Task/${taskId}`,
+      "DELETE"
+    );
 
-    // Call centralized Salesforce deletion logic (ID or name resolution happens inside)
-    const { deleteSalesforceTask } = require("../salesforce");
-    const response = await deleteSalesforceTask(context, state, taskIdentifier);
-
-    if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Task Deleted Successfully!**\n\n` +
-          `🆔 **Task ID:** ${response.taskId}\n` +
-          `📝 **Task Subject:** ${response.taskSubject}`
-        )
-      );
-      return `Successfully deleted Salesforce task "${response.taskSubject}" (${response.taskId})`;
-    } else if (response.multipleResults) {
-      // Handle multiple results
-      const taskList = response.multipleResults
-        .map((t, index) => `${index + 1}. ${t.Subject} (${t.Id})`)
-        .join('\n');
-
-      await context.sendActivity(
-        MessageFactory.text(
-          `❌ **Multiple tasks found:**\n\n${taskList}\n\n` +
-          `Please be more specific with the task subject, or use the exact Task ID.`
-        )
-      );
-      return `Multiple tasks found with similar subjects`;
-    } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to delete task: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to delete task: ${response.message || "Unknown error"}`;
-    }
+    await context.sendActivity(
+      MessageFactory.text(
+        `✅ **Task Deleted Successfully!**\n\n🆔 **Task ID:** ${taskId}`
+      )
+    );
+    return `Successfully deleted task ${taskId}`;
   } catch (error) {
     console.error("Error deleting Salesforce task:", error);
     const errorMessage = error.message || "Unknown error";
+
     await context.sendActivity(
-      MessageFactory.text(`❌ Error deleting task: ${errorMessage}. Please try again.`)
+      MessageFactory.text(
+        `❌ Error deleting task: ${errorMessage}. Please try again.`
+      )
     );
     return `Error occurred: ${errorMessage}`;
   }
 });
+
+
 
 
 
@@ -1455,21 +1476,13 @@ app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
   console.log("GetSalesforceContacts action called with parameters:", parameters);
   try {
     initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
     const limit = Math.min(parameters.limit || 20, 200);
     const query = `SELECT Id, FirstName, LastName, Email, Phone, Title, AccountId, Account.Name FROM Contact ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const axios = require("axios");
-
-    const headers = {
-      Authorization: `Bearer ${config.salesforceAccessToken}`,
-      "Content-Type": "application/json",
-    };
-
-    const response = await axios.get(
-      `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(query)}`,
-      { headers }
-    );
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
 
     const records = response.data.records || [];
 
@@ -1617,7 +1630,8 @@ app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
 app.ai.action("CreateSalesforceContact", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
-
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
     const firstName = parameters.firstName;
     const lastName = parameters.lastName;
 
@@ -1628,13 +1642,13 @@ app.ai.action("CreateSalesforceContact", async (context, state, parameters) => {
       return "Missing required parameters";
     }
 
-    const response = await createSalesforceContact(context, state, { firstName, lastName });
+    const response = await httpCreateRequest(teamsChatId, `/services/data/v57.0/sobjects/Contact`, "POST", {FirstName: firstName, LastName: lastName});
 
-    if (response.status === "success") {
+    if (response && response.data) {
       await context.sendActivity(
         MessageFactory.text(
           `✅ **Contact Created Successfully!**\n\n` +
-          `🆔 **Contact ID:** ${response.id}\n` +
+          `🆔 **Contact ID:** ${response.data.id}\n` +
           `👤 **Name:** ${firstName} ${lastName}`
         )
       );
@@ -1659,7 +1673,8 @@ app.ai.action("UpdateSalesforceContact", async (context, state, parameters) => {
   try {
     console.log("UpdateSalesforceContact called with:", parameters);
     initializeConversationState(state);
-
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
     const config = require("../config");
     const axios = require("axios");
 
@@ -1683,10 +1698,11 @@ app.ai.action("UpdateSalesforceContact", async (context, state, parameters) => {
         nameQuery = `SELECT Id, FirstName, LastName FROM Contact WHERE LastName LIKE '%${lastName}%' LIMIT 200`;
       }
 
-      const nameResponse = await axios.get(
-        `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
-        { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
-      );
+      // const nameResponse = await axios.get(
+      //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+      //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
+      // );
+      const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
 
       if (nameResponse.data.records.length === 1) {
         contactId = nameResponse.data.records[0].Id;
@@ -1720,15 +1736,11 @@ app.ai.action("UpdateSalesforceContact", async (context, state, parameters) => {
       return;
     }
 
-    console.log(`Updating contact ${contactId} with fields:`, updateFields);
-    const { updateSalesforceContact } = require("../salesforce");
-    const response = await updateSalesforceContact(context, state, contactId, updateFields);
-
-    if (response.status === "success") {
-      await context.sendActivity(`✅ Contact updated successfully (ID: ${contactId}).`);
-    } else {
-      await context.sendActivity(`❌ Failed to update contact: ${response.message || "Unknown error"}.`);
-    }
+    // console.log(`Updating contact ${contactId} with fields:`, updateFields);
+    // const { updateSalesforceContact } = require("../salesforce");
+    // const response = await updateSalesforceContact(context, state, contactId, updateFields);
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Contact/${contactId}`, "PATCH", updateFields);
+    await context.sendActivity(`✅ Contact updated successfully (ID: ${contactId}).`);
   } catch (error) {
     console.error("Error in UpdateSalesforceContact:", error);
     await context.sendActivity(`❌ Error: ${error.message || "Unknown error"}`);
@@ -1740,55 +1752,79 @@ app.ai.action("DeleteSalesforceContact", async (context, state, parameters) => {
   try {
     initializeConversationState(state);
 
-    // Accept both contactId and contactName parameters
-    const contactIdentifier = parameters.contactId || parameters.contactName || parameters.name;
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
 
-    if (!contactIdentifier) {
+    // 1. If no contactId is given, try to find it by name
+    let contactId = parameters.contactId;
+    if (parameters.contactName || parameters.name) {
+      const nameValue = parameters.contactName || parameters.name;
+      const nameQuery = `SELECT Id, FirstName, LastName FROM Contact WHERE Name LIKE '%${nameValue}%' LIMIT 200`;
+
+      const lookupResponse = await httpRequest(
+        teamsChatId,
+        `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
+        "GET"
+      );
+
+      if (lookupResponse.data.records.length === 0) {
+        await context.sendActivity(
+          MessageFactory.text(`❌ No Salesforce contact found matching the provided name.`)
+        );
+        return "No contact found by name";
+      }
+
+      if (lookupResponse.data.records.length > 1) {
+        const contactList = lookupResponse.data.records
+          .map(
+            (c, index) =>
+              `${index + 1}. ${c.FirstName || ""} ${c.LastName || ""} (${c.Id})`
+          )
+          .join("\n");
+
+        await context.sendActivity(
+          MessageFactory.text(
+            `⚠ Multiple contacts found matching the provided name:\n\n${contactList}\n\nPlease refine your search.`
+          )
+        );
+        return "Multiple contacts found by name";
+      }
+
+      contactId = lookupResponse.data.records[0].Id;
+    }
+
+    // 2. If still no contactId, return error
+    if (!contactId) {
       await context.sendActivity(
-        MessageFactory.text("❌ Missing required information. I need either the Contact ID or Contact Name to delete a contact.")
+        MessageFactory.text(
+          "❌ Missing required information. I need either: Contact ID or a Contact Name to find the contact."
+        )
       );
       return "Missing required parameters";
     }
 
-    console.log(`Deleting contact "${contactIdentifier}" from Salesforce CRM...`);
+    // 3. Delete contact
+    console.log(`Deleting contact ${contactId} from Salesforce CRM...`);
+    await httpRequest(
+      teamsChatId,
+      `/services/data/v59.0/sobjects/Contact/${contactId}`,
+      "DELETE"
+    );
 
-    // Centralized deletion logic (ID or name resolution happens inside)
-    const { deleteSalesforceContact } = require("../salesforce");
-    const response = await deleteSalesforceContact(context, state, contactIdentifier);
-
-    if (response.status === "success") {
-      await context.sendActivity(
-        MessageFactory.text(
-          `✅ **Contact Deleted Successfully!**\n\n` +
-          `🆔 **Contact ID:** ${response.contactId}\n` +
-          (response.contactName ? `📋 **Contact Name:** ${response.contactName}` : "")
-        )
-      );
-      return `Successfully deleted Salesforce contact "${response.contactName || response.contactId}"`;
-    } else if (response.multipleResults) {
-      // Multiple matches case
-      const contactList = response.multipleResults
-        .map((c, index) => `${index + 1}. ${c.FirstName || ""} ${c.LastName || ""} (${c.Id})`)
-        .join("\n");
-
-      await context.sendActivity(
-        MessageFactory.text(
-          `❌ **Multiple contacts found:**\n\n${contactList}\n\n` +
-          `Please refine the contact name or provide the exact Contact ID.`
-        )
-      );
-      return `Multiple contacts found with similar names`;
-    } else {
-      await context.sendActivity(
-        MessageFactory.text(`❌ Failed to delete contact: ${response.message || "Unknown error"}.`)
-      );
-      return `Failed to delete contact: ${response.message || "Unknown error"}`;
-    }
+    await context.sendActivity(
+      MessageFactory.text(
+        `✅ **Contact Deleted Successfully!**\n\n🆔 **Contact ID:** ${contactId}`
+      )
+    );
+    return `Successfully deleted contact ${contactId}`;
   } catch (error) {
     console.error("Error deleting Salesforce contact:", error);
     const errorMessage = error.message || "Unknown error";
+
     await context.sendActivity(
-      MessageFactory.text(`❌ Error deleting contact: ${errorMessage}. Please try again.`)
+      MessageFactory.text(
+        `❌ Error deleting contact: ${errorMessage}. Please try again.`
+      )
     );
     return `Error occurred: ${errorMessage}`;
   }
@@ -1921,7 +1957,11 @@ app.activity(ActivityTypes.Message, async (context, state) => {
     const {status, accessToken, refreshToken, instanceUrl } = await getUserToken(teamsChatId, "salesforce");
     if (!status) {
       console.log("User is not authenticated with Salesforce, sending login card.");
-      await getSalesforceLoginCard(context, userId);
+      const salesforceLoginCard = await getSalesforceLoginCard(context, userId);
+      // Send login card to user
+      await context.sendActivity({
+        attachments: [CardFactory.adaptiveCard(salesforceLoginCard)]
+      });
       return;
     }
 

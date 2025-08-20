@@ -1,5 +1,6 @@
 // Import required packages
 const express = require("express");
+const axios = require("axios");
 
 // This agent's adapter
 const adapter = require("./adapter");
@@ -28,7 +29,6 @@ expressApp.post("/api/messages", async (req, res) => {
 
 // OAuth callback endpoint
 expressApp.get("/salesforce/callback", async (req, res) => {
-  const container = await containerPromise; // Resolve container Promise
   const { code, state } = req.query;
   const { salesforceClientId, salesforceClientSecret, salesforceRedirectUri } = require("./config");
   if (!code || !state) return res.status(400).send("Missing code or state");
