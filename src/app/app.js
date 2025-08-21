@@ -5,6 +5,7 @@ const chrono = require("chrono-node");
 const moment = require("moment-timezone");
 const {getUserToken} = require("../cosmos");
 const {httpRequest} = require("../httprequest");
+const { deleteUserToken } = require("../cosmos");
 
 // See https://aka.ms/teams-ai-library to learn more about the Teams AI library.
 const { Application, ActionPlanner, OpenAIModel, PromptManager } = require("@microsoft/teams-ai");
@@ -66,7 +67,10 @@ const {
   updateSalesforceContact,
   deleteSalesforceContact,
   createSalesforceMeeting,
-  findSalesforceContactOrAccount
+  findSalesforceContactOrAccount,
+  findSalesforceMeeting,
+  updateSalesforceMeeting,
+  cancelSalesforceMeeting
 } = require("../salesforce");
 
 const {
@@ -1940,6 +1944,165 @@ app.ai.action("CreateSalesforceMeeting", async (context, state, parameters) => {
 });
 
 
+// NEW ACTION: Update/Reschedule Meeting
+app.ai.action("UpdateSalesforceMeeting", async (context, state, parameters) => {
+  try {
+    initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+    const { identifier, newDateTime, identifierType } = parameters;
+    console.log("UpdateSalesforceMeeting called with:", teamsChatId);
+
+    if (!identifier || !newDateTime) {
+      await context.sendActivity("❌ Please provide both the meeting identifier (subject/time) and new date/time.");
+      return;
+    }
+
+    // Get user's timezone
+    const userTimeZone = "Asia/Kolkata";
+
+    // Parse the new datetime
+    let parsedNewDate = chrono.parseDate(newDateTime, new Date(), { forwardDate: true });
+    if (!parsedNewDate) {
+      await context.sendActivity("❌ Could not understand the new meeting date/time.");
+      return;
+    }
+
+    // Parse new datetime components
+    const chronoResult = chrono.parse(newDateTime, new Date(), { forwardDate: true })[0];
+    const year = chronoResult.start.get('year');
+    const month = chronoResult.start.get('month') - 1;
+    const day = chronoResult.start.get('day');
+    const hour = chronoResult.start.get('hour') || 0;
+    const minute = chronoResult.start.get('minute') || 0;
+
+    // Create new time in user's timezone
+    const newStartMoment = moment.tz({ year, month, day, hour, minute }, userTimeZone);
+    const newEndMoment = newStartMoment.clone().add(1, 'hour');
+
+    const newStartISO = newStartMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ');
+    const newEndISO = newEndMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ');
+
+    // Find the meeting to update
+    const { findSalesforceMeeting } = require("../salesforce");
+    
+    let meeting;
+    if (identifierType === 'subject') {
+      meeting = await findSalesforceMeeting({ subject: identifier }, teamsChatId);
+    } else if (identifierType === 'datetime') {
+      // Parse the identifier datetime
+      let parsedIdentifierDate = chrono.parseDate(identifier, new Date(), { forwardDate: true });
+      if (!parsedIdentifierDate) {
+        await context.sendActivity("❌ Could not understand the meeting time to reschedule.");
+        return;
+      }
+
+      const idChronoResult = chrono.parse(identifier, new Date(), { forwardDate: true })[0];
+      const idYear = idChronoResult.start.get('year');
+      const idMonth = idChronoResult.start.get('month') - 1;
+      const idDay = idChronoResult.start.get('day');
+      const idHour = idChronoResult.start.get('hour') || 0;
+      const idMinute = idChronoResult.start.get('minute') || 0;
+
+      const identifierMoment = moment.tz({ year: idYear, month: idMonth, day: idDay, hour: idHour, minute: idMinute }, userTimeZone);
+      
+      meeting = await findSalesforceMeeting({ dateTime: identifierMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ') }, teamsChatId);
+    }
+
+    if (!meeting) {
+      await context.sendActivity(`❌ Could not find a meeting matching "${identifier}". Please check the subject or time and try again.`);
+      return;
+    }
+
+    // Update the meeting
+    const { updateSalesforceMeeting } = require("../salesforce");
+    const updateRes = await updateSalesforceMeeting(teamsChatId, meeting.Id, {
+      startDateTime: newStartISO,
+      endDateTime: newEndISO
+    });
+
+    if (updateRes.status === "success") {
+      const localDisplay = newStartMoment.format("hh:mm A, DD MMM YYYY");
+      await context.sendActivity(
+        `✅ Meeting **"${meeting.Subject}"** rescheduled to ${localDisplay}.`
+      );
+    } else {
+      await context.sendActivity(`❌ Failed to reschedule meeting: ${updateRes.message}`);
+    }
+
+  } catch (err) {
+    console.error("Error updating Salesforce meeting:", err);
+    await context.sendActivity(`❌ Error updating meeting: ${err.message}`);
+  }
+});
+
+// NEW ACTION: Cancel Meeting
+app.ai.action("CancelSalesforceMeeting", async (context, state, parameters) => {
+  try {
+    initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+    const { identifier, identifierType } = parameters;
+
+    if (!identifier) {
+      await context.sendActivity("❌ Please provide the meeting subject or date/time to cancel.");
+      return;
+    }
+
+    // Get user's timezone
+    const userTimeZone = "Asia/Kolkata";
+
+    // Find the meeting to cancel
+    const { findSalesforceMeeting } = require("../salesforce");
+    
+    let meeting;
+    if (identifierType === 'subject') {
+      meeting = await findSalesforceMeeting({ subject: identifier }, teamsChatId);
+    } else if (identifierType === 'datetime') {
+      // Parse the identifier datetime
+      let parsedIdentifierDate = chrono.parseDate(identifier, new Date(), { forwardDate: true });
+      if (!parsedIdentifierDate) {
+        await context.sendActivity("❌ Could not understand the meeting time to cancel.");
+        return;
+      }
+
+      const idChronoResult = chrono.parse(identifier, new Date(), { forwardDate: true })[0];
+      const idYear = idChronoResult.start.get('year');
+      const idMonth = idChronoResult.start.get('month') - 1;
+      const idDay = idChronoResult.start.get('day');
+      const idHour = idChronoResult.start.get('hour') || 0;
+      const idMinute = idChronoResult.start.get('minute') || 0;
+
+      const identifierMoment = moment.tz({ year: idYear, month: idMonth, day: idDay, hour: idHour, minute: idMinute }, userTimeZone);
+      
+      meeting = await findSalesforceMeeting({ dateTime: identifierMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ') }, teamsChatId);
+    }
+
+    if (!meeting) {
+      await context.sendActivity("❌ Could not find the meeting to cancel.");
+      return;
+    }
+
+    // Cancel the meeting
+    const { cancelSalesforceMeeting } = require("../salesforce");
+    const cancelRes = await cancelSalesforceMeeting(teamsChatId, meeting.Id);
+
+    if (cancelRes.status === "success") {
+      const meetingTime = moment(meeting.StartDateTime).tz(userTimeZone).format("hh:mm A, DD MMM YYYY");
+      await context.sendActivity(
+        `✅ Meeting **"${meeting.Subject}"** scheduled for ${meetingTime} has been cancelled.`
+      );
+    } else {
+      await context.sendActivity(`❌ Failed to cancel meeting: ${cancelRes.message}`);
+    }
+
+  } catch (err) {
+    console.error("Error cancelling Salesforce meeting:", err);
+    await context.sendActivity(`❌ Error cancelling meeting: ${err.message}`);
+  }
+});
+
+
 
 
 
@@ -2019,6 +2182,33 @@ app.activity(ActivityTypes.Message, async (context, state) => {
     throw error;
   }
 });
+
+
+
+
+// Handles Logout Functionality
+app.ai.action("Logout", async (context, state, parameters) => {
+  try {
+
+    initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+
+    console.log("Logout action called:", teamsChatId)
+
+    let deletetoken = await deleteUserToken(teamsChatId, "salesforce");
+    if (!deletetoken.status) {
+      console.log("No token found for user, nothing to delete.");
+      return "❌ No Salesforce account connected to log out from.";
+    }
+    
+    return "✅ Logged out successfully from Salesforce account."
+
+  } catch (error) {
+    console.error("Error in Logout:", error);
+    return `❌Error in logout: ${error.message || "Unknown error"}.`
+  }
+})
 
 
 module.exports = app;

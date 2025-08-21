@@ -1,5 +1,6 @@
 const axios = require("axios");
 const config = require("./config");
+const {httpRequest} = require("./httpRequest");
 
 const SALESFORCE_INSTANCE_URL = "https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0";
 const SALESFORCE_API_VERSION = "v60.0";
@@ -619,6 +620,97 @@ async function findSalesforceContactOrAccount(name) {
 }
 
 
+// NEW FUNCTION: Find Meeting by Subject or DateTime
+async function findSalesforceMeeting(data, teamsChatId) {
+  try {
+    let query;
+    
+    if (data.subject) {
+      // Search by subject (case-insensitive, partial match)
+      query = `SELECT Id, Subject, StartDateTime, EndDateTime, WhoId, WhatId FROM Event WHERE Subject LIKE '%${data.subject}%' ORDER BY StartDateTime DESC LIMIT 1`;
+    } else if (data.dateTime) {
+      // Convert the provided datetime to a range (±30 minutes for flexibility)
+      const searchMoment = moment(data.dateTime);
+      const startRange = searchMoment.clone().subtract(30, 'minutes').format('YYYY-MM-DDTHH:mm:ss.SSSZ');
+      const endRange = searchMoment.clone().add(30, 'minutes').format('YYYY-MM-DDTHH:mm:ss.SSSZ');
+      
+      query = `SELECT Id, Subject, StartDateTime, EndDateTime, WhoId, WhatId FROM Event WHERE StartDateTime >= ${startRange} AND StartDateTime <= ${endRange} ORDER BY StartDateTime ASC LIMIT 1`;
+    } else {
+      return null;
+    }
+
+    console.log("Meeting search query:", query);
+    console.log("Teams Chat ID for request:", teamsChatId);
+
+    const response = await httpRequest(
+      teamsChatId,
+      `/services/data/v61.0/query?q=${encodeURIComponent(query)}`,
+      "GET"
+    );
+
+    console.log("Meeting search results:", response.data);
+
+    if (response.data.records.length > 0) {
+      return response.data.records[0];
+    }
+
+    return null;
+  } catch (err) {
+    console.error("Find Meeting Error:", err);
+    return null;
+  }
+}
+
+// NEW FUNCTION: Update Meeting
+async function updateSalesforceMeeting(teamsChatId, meetingId, { startDateTime, endDateTime }) {
+  try {
+    console.log("Updating meeting with ID:", meetingId);
+    console.log("New times:", {
+      startDateTime,
+      endDateTime
+    });
+
+    const body = {
+      StartDateTime: startDateTime,
+      EndDateTime: endDateTime
+    };
+
+    console.log("Sending update body to Salesforce:", JSON.stringify(body, null, 2));
+
+    const response = await httpRequest(
+      teamsChatId,
+      `/services/data/v61.0/sobjects/Event/${meetingId}`,
+      "PATCH",
+      body
+    );
+
+    console.log("Salesforce update response:", response.status);
+    return { status: "success" };
+  } catch (err) {
+    console.error("Update Meeting Error:", err.response?.data || err.message);
+    return { status: "error", message: err.response?.data?.[0]?.message || err.message };
+  }
+}
+
+// NEW FUNCTION: Cancel Meeting
+async function cancelSalesforceMeeting(teamsChatId, meetingId) {
+  try {
+    console.log("Cancelling meeting with ID:", meetingId);
+
+    const response = await httpRequest(
+      teamsChatId,
+      `/services/data/v61.0/sobjects/Event/${meetingId}`,
+      "DELETE"
+    );
+
+    console.log("Salesforce cancel response:", response.status);
+    return { status: "success" };
+  } catch (err) {
+    console.error("Cancel Meeting Error:", err.response?.data || err.message);
+    return { status: "error", message: err.response?.data?.[0]?.message || err.message };
+  }
+}
+
 
 
 
@@ -647,5 +739,8 @@ module.exports = {
   updateSalesforceContact,
   deleteSalesforceContact,
   createSalesforceMeeting,
-  findSalesforceContactOrAccount
+  findSalesforceContactOrAccount,
+  findSalesforceMeeting,
+  updateSalesforceMeeting,
+  cancelSalesforceMeeting
 };

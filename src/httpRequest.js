@@ -32,7 +32,7 @@ async function httpRequest(teamsChatId, url, method = "GET", data = null) {
       case "PUT":
         response = await client.put(`${instanceUrl}${url}`, data, config);
         break;
-        
+
       case "PATCH":
         response = await client.patch(`${instanceUrl}${url}`, data, config);
         break;
@@ -47,7 +47,7 @@ async function httpRequest(teamsChatId, url, method = "GET", data = null) {
 
     return response;
   } catch (error) {
-    console.error(`Error making ${method} request:`, error.message);
+    console.error(`Error making ${method} request:`, error);
     throw error;
   }
 }

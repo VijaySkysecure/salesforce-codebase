@@ -410,6 +410,53 @@
       },
       "required": ["subject", "startDateTime"]
     }
+  },
+  {
+    "name": "UpdateSalesforceMeeting",
+    "description": "Updates/reschedules an existing Salesforce meeting by searching for it using either the meeting subject or date/time, then updating it to a new date/time.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "The meeting identifier - either the subject/title of the meeting (e.g., 'meeting with dhanapal') or the current date/time of the meeting (e.g., '12pm tomorrow', '2pm today')."
+        },
+        "identifierType": {
+          "type": "string",
+          "enum": ["subject", "datetime"],
+          "description": "Specifies whether the identifier is a 'subject' (meeting title/subject) or 'datetime' (current meeting time)."
+        },
+        "newDateTime": {
+          "type": "string",
+          "description": "New date and time for the meeting in natural language or ISO format (e.g., '11am tomorrow', '2025-08-16T15:00')."
+        }
+      },
+      "required": ["identifier", "identifierType", "newDateTime"]
+    }
+  },
+  {
+    "name": "CancelSalesforceMeeting",
+    "description": "Cancels an existing Salesforce meeting by searching for it using either the meeting subject or date/time.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "The meeting identifier - either the subject/title of the meeting (e.g., 'meeting with dhanapal') or the date/time of the meeting (e.g., '12pm tomorrow', '2pm today')."
+        },
+        "identifierType": {
+          "type": "string",
+          "enum": ["subject", "datetime"],
+          "description": "Specifies whether the identifier is a 'subject' (meeting title/subject) or 'datetime' (meeting time)."
+        }
+      },
+      "required": ["identifier", "identifierType"]
+    }
+  },
+  {
+    "name": "Logout",
+    "description": "Logout from salesforce acount",
+    "parameters": {}
   }
 
 ]

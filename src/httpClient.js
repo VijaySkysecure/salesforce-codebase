@@ -20,6 +20,7 @@ async function refreshAccessToken(teamsChatId, refreshToken) {
 
         const newTokens = response.data;
         console.log("🔄 Refreshed Salesforce access token");
+        console.log("New Access Token:", newTokens);
 
         // Store new token back in Cosmos
         await storeUserToken(teamsChatId, "salesforce", newTokens);
@@ -38,10 +39,13 @@ function createSalesforceClient(teamsChatId) {
     client.interceptors.response.use(
         (response) => response,
         async (error) => {
+            console.log("🔄 Intercepted error response:", error.response);
             if (error.response?.status === 401) {
                 console.warn("⚠️ Salesforce token expired. Attempting refresh...");
                 const { refreshToken, instanceUrl } = await getUserToken(teamsChatId, "salesforce");
+                console.log("🔄 Refreshing access token for teamsChatId:", refreshToken);
                 if (!refreshToken) throw new Error("No refresh token available");
+                
 
                 const newTokens = await refreshAccessToken(teamsChatId, refreshToken);
 
