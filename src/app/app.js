@@ -3,9 +3,10 @@ const path = require("path");
 const config = require("../config");
 const chrono = require("chrono-node");
 const moment = require("moment-timezone");
-const {getUserToken} = require("../cosmos");
-const {httpRequest} = require("../httprequest");
+const { getUserToken } = require("../cosmos");
+const { httpRequest } = require("../httprequest");
 const { deleteUserToken } = require("../cosmos");
+const { getOutlookLoginCard } = require("../adaptiveCards/outlookLoginCard");
 
 // See https://aka.ms/teams-ai-library to learn more about the Teams AI library.
 const { Application, ActionPlanner, OpenAIModel, PromptManager } = require("@microsoft/teams-ai");
@@ -50,7 +51,7 @@ const {
   getSalesforceLeads,
   updateSalesforceLead,
   deleteSalesforceLead,
-    // Opportunities
+  // Opportunities
   createSalesforceOpportunity,
   updateSalesforceOpportunity,
   deleteSalesforceOpportunity,
@@ -74,14 +75,14 @@ const {
 } = require("../salesforce");
 
 const {
-getSalesforceLoginCard
+  getSalesforceLoginCard
 } = require("../adaptiveCards/salesforceLoginCard");
 
 
 const defaultConversationState = {
   isAuthenticated: false,
   userId: null,
-  
+
   // Last fetched raw data
   lastAccountsData: null,
   lastLeadsData: null,
@@ -112,7 +113,7 @@ const defaultConversationState = {
   formattedCampaigns: null,
   formattedCalls: null,
   formattedOpportunities: null,
-  
+
   // Search results
   formattedLeadsSearch: null,
 
@@ -147,7 +148,7 @@ app.ai.action("GetSalesforceLeads", async (context, state, parameters) => {
     // Ensure state is initialized with defaultConversationState
     if (!state.conversation) state.conversation = {};
     state.conversation = { ...defaultConversationState, ...state.conversation };
-    
+
 
     const userId = context.activity.from.id;
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
@@ -187,37 +188,37 @@ app.ai.action("GetSalesforceLeads", async (context, state, parameters) => {
 
     // Store formatted version
     // state.conversation.formattedLeads = JSON.stringify(formattedLeads, null, 2);
- 
 
-const adaptiveCard = {
-  type: "AdaptiveCard",
-  $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
-  version: "1.4",
-  body: [
-    {
-      type: "TextBlock",
-      text: `📊 Retrieved ${records.length} Leads`,
-      weight: "Bolder",
-      size: "Large",
-      wrap: true
-    },
-    ...formattedLeads.map(lead => ({
-      type: "Container",
-      items: [
-        { type: "TextBlock", text: `**Name:** ${lead.name}`, wrap: true },
-        { type: "TextBlock", text: `**Company:** ${lead.company}`, wrap: true },
-        { type: "TextBlock", text: `**Status:** ${lead.status}`, wrap: true },
-        { type: "TextBlock", text: `**Email:** ${lead.email}`, wrap: true },
-        { type: "TextBlock", text: `**Phone:** ${lead.phone}`, wrap: true }
-      ],
-      separator: true
-    }))
-  ]
-};
 
-await context.sendActivity({
-  attachments: [CardFactory.adaptiveCard(adaptiveCard)]
-});
+    const adaptiveCard = {
+      type: "AdaptiveCard",
+      $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+      version: "1.4",
+      body: [
+        {
+          type: "TextBlock",
+          text: `📊 Retrieved ${records.length} Leads`,
+          weight: "Bolder",
+          size: "Large",
+          wrap: true
+        },
+        ...formattedLeads.map(lead => ({
+          type: "Container",
+          items: [
+            { type: "TextBlock", text: `**Name:** ${lead.name}`, wrap: true },
+            { type: "TextBlock", text: `**Company:** ${lead.company}`, wrap: true },
+            { type: "TextBlock", text: `**Status:** ${lead.status}`, wrap: true },
+            { type: "TextBlock", text: `**Email:** ${lead.email}`, wrap: true },
+            { type: "TextBlock", text: `**Phone:** ${lead.phone}`, wrap: true }
+          ],
+          separator: true
+        }))
+      ]
+    };
+
+    await context.sendActivity({
+      attachments: [CardFactory.adaptiveCard(adaptiveCard)]
+    });
 
     // return response.data.records
     return `Retrieved ${records.length} leads successfully`;
@@ -282,12 +283,12 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
   try {
     console.log("UpdateSalesforceLead called with:", parameters);
     initializeConversationState(state);
- 
+
     const config = require("../config");
     const axios = require("axios");
- 
+
     let leadId = parameters.leadId;
- 
+
     // 1. Try finding lead by email first
     if (!leadId && parameters.email) {
       const emailQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE Email LIKE '%${parameters.email}%' LIMIT 200`;
@@ -297,7 +298,7 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
       // );
 
       const emailResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(emailQuery)}`, "GET");
- 
+
       if (emailResponse.data.records.length === 1) {
         leadId = emailResponse.data.records[0].Id;
       } else if (emailResponse.data.records.length > 1) {
@@ -305,7 +306,7 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
         return;
       }
     }
- 
+
     // 2. If still no leadId, try by name
     if (!leadId && (parameters.firstName || parameters.lastName || parameters.name)) {
       let nameQuery;
@@ -317,13 +318,13 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
         const andClause = firstNamePart && lastNamePart ? " AND " : "";
         nameQuery = `SELECT Id, FirstName, LastName FROM Lead WHERE ${firstNamePart}${andClause}${lastNamePart} LIMIT 200`;
       }
- 
+
       // const nameResponse = await axios.get(
       //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
       //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       // );
       const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
- 
+
       if (nameResponse.data.records.length === 0) {
         await context.sendActivity("❌ No matching Salesforce lead found.");
         return;
@@ -334,12 +335,12 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
       }
       leadId = nameResponse.data.records[0].Id;
     }
- 
+
     if (!leadId) {
       await context.sendActivity("❌ Could not find a matching lead by provided details.");
       return;
     }
- 
+
     // 3. Build update object
     const updateFields = {
       ...(parameters.firstName && { FirstName: parameters.firstName }),
@@ -352,12 +353,12 @@ app.ai.action("UpdateSalesforceLead", async (context, state, parameters) => {
       ...(parameters.leadSource && { LeadSource: parameters.leadSource }),
       ...(parameters.industry && { Industry: parameters.industry })
     };
- 
+
     if (Object.keys(updateFields).length === 0) {
       await context.sendActivity("❌ No fields provided to update.");
       return;
     }
- 
+
     console.log(`Updating lead ${leadId} with fields:`, updateFields);
     const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Lead/${leadId}`, "PATCH", updateFields);
     await context.sendActivity(`✅ Lead updated successfully (ID: ${leadId}).`);
@@ -429,7 +430,7 @@ app.ai.action("DeleteSalesforceLead", async (context, state, parameters) => {
     const { deleteSalesforceLead } = require("../salesforce");
     const response = await httpRequest(teamsChatId, `/services/data/v59.0/sobjects/Lead/${leadId}`, "DELETE");
     await context.sendActivity(
-        MessageFactory.text(`✅ **Lead Deleted Successfully!**\n\n🆔 **Lead ID:** ${leadId}`)
+      MessageFactory.text(`✅ **Lead Deleted Successfully!**\n\n🆔 **Lead ID:** ${leadId}`)
     );
     return `Successfully deleted lead ${leadId}`;
 
@@ -457,7 +458,7 @@ app.ai.action("GetSalesforceOpportunities", async (context, state, parameters) =
     const limit = Math.min(parameters.limit || 20, 200);
     const query = `SELECT Id, Name, StageName, Amount, CloseDate, AccountId, Account.Name FROM Opportunity ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`, "GET");
 
 
     const records = response.data.records || [];
@@ -596,7 +597,7 @@ app.ai.action("GetSalesforceOpportunities", async (context, state, parameters) =
     });
 
     await context.sendActivity(cardAttachment);
-    
+
     return `Retrieved ${records.length} opportunities successfully`;
   } catch (error) {
     console.error("Error fetching Salesforce opportunities:", error);
@@ -665,20 +666,20 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
     const config = require("../config");
     const axios = require("axios");
- 
+
     let opportunityId = parameters.opportunityId;
- 
+
     // 1. Try finding opportunity by name first if no ID provided
     if (!opportunityId && (parameters.opportunityName || parameters.name)) {
       const opportunityName = parameters.opportunityName || parameters.name;
       const nameQuery = `SELECT Id, Name FROM Opportunity WHERE Name LIKE '%${opportunityName}%' LIMIT 200`;
-      
+
       // const nameResponse = await axios.get(
       //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
       //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       // );
       const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
- 
+
       if (nameResponse.data.records.length === 1) {
         opportunityId = nameResponse.data.records[0].Id;
       } else if (nameResponse.data.records.length > 1) {
@@ -689,12 +690,12 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
         return;
       }
     }
- 
+
     if (!opportunityId) {
       await context.sendActivity("❌ Could not find a matching opportunity by provided details.");
       return;
     }
- 
+
     // 2. Build update object
     const updateFields = {
       ...(parameters.newName && { Name: parameters.newName }),
@@ -706,12 +707,12 @@ app.ai.action("UpdateSalesforceOpportunity", async (context, state, parameters) 
       ...(parameters.probability && { Probability: parseInt(parameters.probability) }),
       ...(parameters.accountId && { AccountId: parameters.accountId })
     };
- 
+
     if (Object.keys(updateFields).length === 0) {
       await context.sendActivity("❌ No fields provided to update.");
       return;
     }
- 
+
     console.log(`Updating opportunity ${opportunityId} with fields:`, updateFields);
     const response = await httpRequest(teamsChatId, `/sobjectsOpportunity/${opportunityId}`, "PATCH", updateFields);
     await context.sendActivity(`✅ Opportunity updated successfully (ID: ${opportunityId}).`);
@@ -816,7 +817,7 @@ app.ai.action("GetSalesforceAccounts", async (context, state, parameters) => {
     const limit = Math.min(parameters.limit || 20, 200);
     const query = `SELECT Id, Name, Type, Industry, Phone, Website FROM Account ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`, "GET");
 
     const records = response.data.records || [];
 
@@ -954,7 +955,7 @@ app.ai.action("GetSalesforceAccounts", async (context, state, parameters) => {
     });
 
     await context.sendActivity(cardAttachment);
-    
+
     return `Retrieved ${records.length} accounts successfully`;
   } catch (error) {
     console.error("Error fetching Salesforce accounts:", error);
@@ -1017,20 +1018,20 @@ app.ai.action("UpdateSalesforceAccount", async (context, state, parameters) => {
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
     const config = require("../config");
     const axios = require("axios");
- 
+
     let accountId = parameters.accountId;
- 
+
     // 1. Try finding account by name first if no ID provided
     if (!accountId && (parameters.accountName || parameters.name)) {
       const accountName = parameters.accountName || parameters.name;
       const nameQuery = `SELECT Id, Name FROM Account WHERE Name LIKE '%${accountName}%' LIMIT 200`;
-      
+
       // const nameResponse = await axios.get(
       //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
       //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       // );
       const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
- 
+
       if (nameResponse.data.records.length === 1) {
         accountId = nameResponse.data.records[0].Id;
       } else if (nameResponse.data.records.length > 1) {
@@ -1041,12 +1042,12 @@ app.ai.action("UpdateSalesforceAccount", async (context, state, parameters) => {
         return;
       }
     }
- 
+
     if (!accountId) {
       await context.sendActivity("❌ Could not find a matching account by provided details.");
       return;
     }
- 
+
     // 2. Build update object
     const updateFields = {
       ...(parameters.newName && { Name: parameters.newName }),
@@ -1056,12 +1057,12 @@ app.ai.action("UpdateSalesforceAccount", async (context, state, parameters) => {
       ...(parameters.website && { Website: parameters.website }),
       ...(parameters.description && { Description: parameters.description })
     };
- 
+
     if (Object.keys(updateFields).length === 0) {
       await context.sendActivity("❌ No fields provided to update.");
       return;
     }
- 
+
     // console.log(`Updating account ${accountId} with fields:`, updateFields);
     // const { updateSalesforceAccount } = require("../salesforce");
     // const response = await updateSalesforceAccount(context, state, accountId, updateFields);
@@ -1171,7 +1172,7 @@ app.ai.action("GetSalesforceTasks", async (context, state, parameters) => {
                    ORDER BY CreatedDate DESC 
                    LIMIT ${limit}`;
 
-    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`, "GET");
 
     const records = response.data.records || [];
 
@@ -1295,7 +1296,7 @@ app.ai.action("CreateSalesforceTask", async (context, state, parameters) => {
       return "Missing required parameters";
     }
 
-      const response = await httpCreateRequest(teamsChatId, `/services/data/v59.0/sobjects/Task`, "POST", {Subject: subject, Status: status});
+    const response = await httpCreateRequest(teamsChatId, `/services/data/v59.0/sobjects/Task`, "POST", { Subject: subject, Status: status });
 
 
     if (response && response.id) {
@@ -1340,13 +1341,13 @@ app.ai.action("UpdateSalesforceTask", async (context, state, parameters) => {
     if (!taskId && parameters.taskSubject) {
       const taskSubject = parameters.taskSubject;
       const nameQuery = `SELECT Id, Subject FROM Task WHERE Subject LIKE '%${taskSubject}%' LIMIT 200`;
-      
+
       // const nameResponse = await axios.get(
       //   `https://orgfarm-5a7d798f5f-dev-ed.develop.my.salesforce.com/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`,
       //   { headers: { Authorization: `Bearer ${config.salesforceAccessToken}` } }
       // );
       const nameResponse = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(nameQuery)}`, "GET");
-      
+
       console.log("Name query response:", nameResponse.data.records);
       if (nameResponse.data.records.length === 1) {
         taskId = nameResponse.data.records[0].Id;
@@ -1486,7 +1487,7 @@ app.ai.action("GetSalesforceContacts", async (context, state, parameters) => {
     const limit = Math.min(parameters.limit || 20, 200);
     const query = `SELECT Id, FirstName, LastName, Email, Phone, Title, AccountId, Account.Name FROM Contact ORDER BY CreatedDate DESC LIMIT ${limit}`;
 
-    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`,"GET");
+    const response = await httpRequest(teamsChatId, `/services/data/v59.0/query?q=${encodeURIComponent(query)}`, "GET");
 
     const records = response.data.records || [];
 
@@ -1646,7 +1647,7 @@ app.ai.action("CreateSalesforceContact", async (context, state, parameters) => {
       return "Missing required parameters";
     }
 
-    const response = await httpCreateRequest(teamsChatId, `/services/data/v57.0/sobjects/Contact`, "POST", {FirstName: firstName, LastName: lastName});
+    const response = await httpCreateRequest(teamsChatId, `/services/data/v57.0/sobjects/Contact`, "POST", { FirstName: firstName, LastName: lastName });
 
     if (response && response.data) {
       await context.sendActivity(
@@ -1864,7 +1865,7 @@ app.ai.action("CreateSalesforceMeeting", async (context, state, parameters) => {
     // THE KEY FIX: Create the datetime as if the user meant local time
     // Parse the time components from the original request
     const chronoResult = chrono.parse(startDateTime, new Date(), { forwardDate: true })[0];
-    
+
     // Get the date and time components
     const year = chronoResult.start.get('year');
     const month = chronoResult.start.get('month') - 1; // JavaScript months are 0-based
@@ -1985,7 +1986,7 @@ app.ai.action("UpdateSalesforceMeeting", async (context, state, parameters) => {
 
     // Find the meeting to update
     const { findSalesforceMeeting } = require("../salesforce");
-    
+
     let meeting;
     if (identifierType === 'subject') {
       meeting = await findSalesforceMeeting({ subject: identifier }, teamsChatId);
@@ -2005,7 +2006,7 @@ app.ai.action("UpdateSalesforceMeeting", async (context, state, parameters) => {
       const idMinute = idChronoResult.start.get('minute') || 0;
 
       const identifierMoment = moment.tz({ year: idYear, month: idMonth, day: idDay, hour: idHour, minute: idMinute }, userTimeZone);
-      
+
       meeting = await findSalesforceMeeting({ dateTime: identifierMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ') }, teamsChatId);
     }
 
@@ -2054,7 +2055,7 @@ app.ai.action("CancelSalesforceMeeting", async (context, state, parameters) => {
 
     // Find the meeting to cancel
     const { findSalesforceMeeting } = require("../salesforce");
-    
+
     let meeting;
     if (identifierType === 'subject') {
       meeting = await findSalesforceMeeting({ subject: identifier }, teamsChatId);
@@ -2074,7 +2075,7 @@ app.ai.action("CancelSalesforceMeeting", async (context, state, parameters) => {
       const idMinute = idChronoResult.start.get('minute') || 0;
 
       const identifierMoment = moment.tz({ year: idYear, month: idMonth, day: idDay, hour: idHour, minute: idMinute }, userTimeZone);
-      
+
       meeting = await findSalesforceMeeting({ dateTime: identifierMoment.format('YYYY-MM-DDTHH:mm:ss.SSSZ') }, teamsChatId);
     }
 
@@ -2103,7 +2104,27 @@ app.ai.action("CancelSalesforceMeeting", async (context, state, parameters) => {
 });
 
 
+app.message("/outlook", async (context, state) => {
+  try {
 
+    // Initilize the conversation state
+    initializeConversationState(state);
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+
+    const outlookLoginCard = getOutlookLoginCard(context);
+
+    await context.sendActivity({
+      attachments: [CardFactory.adaptiveCard(outlookLoginCard)]
+    });
+    return "Outlook login card sended successfully";
+
+
+  } catch (error) {
+    console.error("Error in sending outlook message card:", error)
+    return `Error in outlook login card send ${error.message}`
+  }
+})
 
 
 
@@ -2117,7 +2138,7 @@ app.activity(ActivityTypes.Message, async (context, state) => {
     if (context.activity.text?.startsWith("/")) {
       return;
     }
-    const {status, accessToken, refreshToken, instanceUrl } = await getUserToken(teamsChatId, "salesforce");
+    const { status, accessToken, refreshToken, instanceUrl } = await getUserToken(teamsChatId, "salesforce");
     if (!status) {
       console.log("User is not authenticated with Salesforce, sending login card.");
       const salesforceLoginCard = await getSalesforceLoginCard(context, userId);
@@ -2145,12 +2166,12 @@ app.activity(ActivityTypes.Message, async (context, state) => {
 
     console.log(`Processing message from user: ${userId}, authenticated: ${state.conversation.isAuthenticated}, state:`, state.conversation);
     // await context.sendActivity(
-        // MessageFactory.text(
-        //   "👋 **Welcome to your AI-powered Salesforce CRM assistant!**\n\n" +
-        //   "To get started, we need to connect your SalesForce CRM account. " +
-        //   "Once connected, you can ask me questions about your CRM data using natural language!"
-        // )
-      // );
+    // MessageFactory.text(
+    //   "👋 **Welcome to your AI-powered Salesforce CRM assistant!**\n\n" +
+    //   "To get started, we need to connect your SalesForce CRM account. " +
+    //   "Once connected, you can ask me questions about your CRM data using natural language!"
+    // )
+    // );
     // if (!state.conversation.isAuthenticated) {
     //   await context.sendActivity(
     //     MessageFactory.text(
@@ -2201,7 +2222,7 @@ app.ai.action("Logout", async (context, state, parameters) => {
       console.log("No token found for user, nothing to delete.");
       return "❌ No Salesforce account connected to log out from.";
     }
-    
+
     return "✅ Logged out successfully from Salesforce account."
 
   } catch (error) {

@@ -7,7 +7,7 @@ const adapter = require("./adapter");
 
 // This agent's main dialog.
 const app = require("./app/app");
-const {storeUserToken} = require("./cosmos");
+const { storeUserToken } = require("./cosmos");
 
 // Create express application.
 const expressApp = express();
@@ -69,3 +69,52 @@ expressApp.get("/salesforce/callback", async (req, res) => {
     res.status(500).send("Error during OAuth token exchange or storage.");
   }
 });
+
+// Oauth callback for outlook
+
+
+expressApp.get("/outlook/callback", async (req, res) => {
+  const { code, state } = req.query;
+  const { microsoftClientId, microsoftClientSecret, microsoftRedirectUrl } = require("./config");
+
+  if (!code || !state) return res.status(400).send("Missing code or state");
+
+  // Decode state
+  let userId, teamsChatId;
+  try {
+    const decodedState = JSON.parse(Buffer.from(state, "base64url").toString());
+    userId = decodedState.userId;
+    teamsChatId = decodedState.teamsChatId || userId;
+  } catch (error) {
+    console.error("Error decoding state:", error.message);
+    return res.status(400).send("Invalid state parameter");
+  }
+
+  try {
+    // Build form body
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: microsoftClientId,
+      client_secret: microsoftClientSecret,
+      redirect_uri: microsoftRedirectUrl,
+      code,
+    });
+
+    // Send POST with body
+    const { data } = await axios.post(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      body.toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    console.log("Access token received:", data);
+
+    await storeUserToken(teamsChatId, "outlook", data);
+
+    res.send(`<html><body><h2>✅ Connected to Outlook. You can close this tab.</h2></body></html>`);
+  } catch (error) {
+    console.error("OAuth error:", error.response?.data || error.message);
+    res.status(500).send("Error during OAuth token exchange or storage.");
+  }
+});
+

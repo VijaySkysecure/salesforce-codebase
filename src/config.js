@@ -17,6 +17,11 @@ const config = {
   salesforceClientId: process.env.SALESFORCE_CLIENT_ID,
   salesforceClientSecret: process.env.SALESFORCE_CLIENT_SECRET,
   salesforceRedirectUri: process.env.SALESFORCE_REDIRECT_URI,
+  microsoftClientId:process.env.MICROSOFT_CLIENT_ID,
+  microsoftClientSecret:process.env.MICROSOFT_CLIENT_SECRET,
+  microsoftRedirectUrl:process.env.MICROSOFT_REDIRECT_URL,
+  microsoftOauthScope:process.env.MICROSOFT_OAUTH_SCOPE
 };
+
 console.log("Config loaded:", config);
 module.exports = config;

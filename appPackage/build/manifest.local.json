@@ -2,12 +2,16 @@
     "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.22/MicrosoftTeams.schema.json",
     "manifestVersion": "1.22",
     "version": "1.0.0",
-    "id": "6be730db-891e-4102-b717-16a7f88cc1aa",
+    "id": "ca1f4f70-4873-4f25-b992-d75735bb2665",
     "developer": {
         "name": "My App, Inc.",
         "websiteUrl": "https://www.example.com",
         "privacyUrl": "https://www.example.com/privacy",
         "termsOfUseUrl": "https://www.example.com/termofuse"
+    },
+    "icons": {
+        "color": "color.png",
+        "outline": "outline.png"
     },
     "name": {
         "short": "Salesforce-Agentlocal",
@@ -17,23 +21,17 @@
         "short": "short description for Salesforce-Agent",
         "full": "full description for Salesforce-Agent"
     },
-    "icons": {
-        "outline": "outline.png",
-        "color": "color.png"
-    },
     "accentColor": "#FFFFFF",
-    "configurableTabs": [],
-    "staticTabs": [],
     "bots": [
         {
-            "botId": "633396ef-0c70-4ef3-a41e-0f937e78542f",
-            "isNotificationOnly": false,
-            "supportsFiles": false,
+            "botId": "4632137e-aedb-4a95-997d-54a386869f07",
             "scopes": [
                 "team",
                 "groupChat",
                 "personal"
             ],
+            "supportsFiles": false,
+            "isNotificationOnly": false,
             "commandLists": [
                 {
                     "scopes": [
@@ -54,6 +52,8 @@
         }
     ],
     "composeExtensions": [],
+    "configurableTabs": [],
+    "staticTabs": [],
     "permissions": [
         "identity",
         "messageTeamMembers"

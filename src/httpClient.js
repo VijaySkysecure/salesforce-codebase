@@ -32,6 +32,37 @@ async function refreshAccessToken(teamsChatId, refreshToken) {
     }
 }
 
+async function outlookRefreshAccessToken(teamsChatId, refreshToken) {
+    try {
+        const { microsoftClientId, microsoftClientSecret, microsoftRedirectUrl } = require("./config");
+        const response = await axios.post(
+            "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+            null,
+            {
+                params: {
+                    grant_type: "refresh_token",
+                    client_id: microsoftClientId,
+                    client_secret: microsoftClientSecret,
+                    refresh_token: refreshToken,
+                    redirect_uri: microsoftRedirectUrl
+                }
+            }
+        );
+
+        const newTokens = response.data;
+        console.log("🔄 Refreshed outlook access token");
+        console.log("New Access Token:", newTokens);
+
+        // Store new token back in Cosmos
+        await storeUserToken(teamsChatId, "outlook", newTokens);
+
+        return newTokens;
+    } catch (error) {
+        console.error("❌ Failed to refresh token:", error.response?.data || error.message);
+        throw error;
+    }
+}
+
 function createSalesforceClient(teamsChatId) {
     const client = axios.create();
 
@@ -45,7 +76,7 @@ function createSalesforceClient(teamsChatId) {
                 const { refreshToken, instanceUrl } = await getUserToken(teamsChatId, "salesforce");
                 console.log("🔄 Refreshing access token for teamsChatId:", refreshToken);
                 if (!refreshToken) throw new Error("No refresh token available");
-                
+
 
                 const newTokens = await refreshAccessToken(teamsChatId, refreshToken);
 
@@ -62,4 +93,34 @@ function createSalesforceClient(teamsChatId) {
     return client;
 }
 
-module.exports = { createSalesforceClient };
+function createOutlookClient(teamsChatId) {
+    const client = axios.create();
+
+    // Attach interceptor
+    client.interceptors.response.use(
+        (response) => response,
+        async (error) => {
+            console.log("🔄 Intercepted error response:", error.response);
+            if (error.response?.status === 401) {
+                console.warn("⚠️ Salesforce token expired. Attempting refresh...");
+                const { refreshToken, instanceUrl } = await getUserToken(teamsChatId, "outlook");
+                console.log("🔄 Refreshing access token for teamsChatId:", refreshToken);
+                if (!refreshToken) throw new Error("No refresh token available");
+
+
+                const newTokens = await outlookRefreshAccessToken(teamsChatId, refreshToken);
+
+                // Retry original request with new access token
+                error.config.headers["Authorization"] = `Bearer ${newTokens.access_token}`;
+                error.config.baseURL = newTokens.instanceUrl;
+
+                return client.request(error.config);
+            }
+            return Promise.reject(error);
+        }
+    );
+
+    return client;
+}
+
+module.exports = { createSalesforceClient, createOutlookClient };
