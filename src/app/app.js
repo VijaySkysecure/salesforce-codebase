@@ -7,6 +7,7 @@ const { getUserToken } = require("../cosmos");
 const { httpRequest } = require("../httprequest");
 const { deleteUserToken } = require("../cosmos");
 const { getOutlookLoginCard } = require("../adaptiveCards/outlookLoginCard");
+const { getOutlookToken, initializeConversationStateOutlook, getRecentEmails } = require('../oauthhandler/salesforceauth');
 
 // See https://aka.ms/teams-ai-library to learn more about the Teams AI library.
 const { Application, ActionPlanner, OpenAIModel, PromptManager } = require("@microsoft/teams-ai");
@@ -71,7 +72,8 @@ const {
   findSalesforceContactOrAccount,
   findSalesforceMeeting,
   updateSalesforceMeeting,
-  cancelSalesforceMeeting
+  cancelSalesforceMeeting,
+  generateOpportunityFromEmail
 } = require("../salesforce");
 
 const {
@@ -2104,27 +2106,97 @@ app.ai.action("CancelSalesforceMeeting", async (context, state, parameters) => {
 });
 
 
-app.message("/outlook", async (context, state) => {
+app.ai.action("CreateOpportunityFromLatestEmail", async (context, state, parameters) => {
   try {
-
-    // Initilize the conversation state
     initializeConversationState(state);
     const userId = context.activity.from.id;
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+    
+    // Check Outlook authentication
+    const token = await getOutlookToken(teamsChatId);
+    const isAuthenticated = await initializeConversationStateOutlook(context, state, teamsChatId);
+    
+    if (!isAuthenticated || !token) {
+      const outlookLoginCard = getOutlookLoginCard(context);
+      await context.sendActivity({
+        attachments: [CardFactory.adaptiveCard(outlookLoginCard)]
+      });
+      await context.sendActivity(
+        MessageFactory.text("🔒 Please authenticate with Outlook using the card above to create an opportunity from your latest email.")
+      );
+      return "User authentication required - login card sent";
+    }
 
-    const outlookLoginCard = getOutlookLoginCard(context);
+    console.log("Fetching latest email from Outlook...");
+    
+    // Get the latest email (limit = 1)
+    const emailResponse = await getRecentEmails(context, state, 1);
+    console.log("Latest email response:", JSON.stringify(emailResponse, null, 2));
+    
+    if (emailResponse.status !== "success" || !emailResponse.data || emailResponse.data.length === 0) {
+      await context.sendActivity(
+        MessageFactory.text("📧 No emails found in your inbox.")
+      );
+      return "No emails found";
+    }
 
-    await context.sendActivity({
-      attachments: [CardFactory.adaptiveCard(outlookLoginCard)]
-    });
-    return "Outlook login card sended successfully";
+    const latestEmail = emailResponse.data[0];
+    
+    // Generate opportunity details from email
+    const opportunityDetails = await generateOpportunityFromEmail(context, state, latestEmail, teamsChatId);
+    
+    if (!opportunityDetails.success) {
+      await context.sendActivity(
+        MessageFactory.text(`❌ Failed to create opportunity: ${opportunityDetails.message}`)
+      );
+      return `Failed to create opportunity: ${opportunityDetails.message}`;
+    }
 
+    await context.sendActivity(
+      MessageFactory.text(
+        `✅ **Opportunity Created Successfully from Latest Email!**\n\n` +
+        `🆔 **Opportunity ID:** ${opportunityDetails.id}\n` +
+        `📋 **Name:** ${opportunityDetails.name}\n` +
+        `📊 **Stage:** ${opportunityDetails.stageName}\n` +
+        `📅 **Close Date:** ${opportunityDetails.closeDate}\n` +
+        `📧 **Source Email:** ${latestEmail.subject || "No subject"} from ${latestEmail.from.emailAddress.name}`
+      )
+    );
+    
+    return `Successfully created Salesforce opportunity "${opportunityDetails.name}" from latest email`;
 
   } catch (error) {
-    console.error("Error in sending outlook message card:", error)
-    return `Error in outlook login card send ${error.message}`
+    console.error("Error creating opportunity from latest email:", error);
+    const errorMessage = error.response?.data?.error?.message || error.message || "Unknown error";
+    await context.sendActivity(
+      MessageFactory.text(`❌ Error creating opportunity from latest email: ${errorMessage}. Please try again.`)
+    );
+    return `Error occurred: ${errorMessage}`;
   }
-})
+});
+
+
+// app.message("/outlook", async (context, state) => {
+//   try {
+
+//     // Initilize the conversation state
+//     initializeConversationState(state);
+//     const userId = context.activity.from.id;
+//     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+
+//     const outlookLoginCard = getOutlookLoginCard(context);
+
+//     await context.sendActivity({
+//       attachments: [CardFactory.adaptiveCard(outlookLoginCard)]
+//     });
+//     return "Outlook login card sended successfully";
+
+
+//   } catch (error) {
+//     console.error("Error in sending outlook message card:", error)
+//     return `Error in outlook login card send ${error.message}`
+//   }
+// })
 
 
 

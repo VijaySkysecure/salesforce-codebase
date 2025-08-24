@@ -1,7 +1,10 @@
 const axios = require("axios");
 const querystring = require("querystring");
-const config = require("./config");
-const { container: containerPromise } = require("./cosmos");
+const config = require("../config");
+const { container: containerPromise } = require("../cosmos");
+const { MessageFactory } = require("botbuilder");
+const { htmlToText } = require("html-to-text");
+
 
 function getAuthUrl(teamsChatId) {
   const params = {
@@ -95,7 +98,6 @@ async function outLookRefreshAccessToken(teamsChatId, refreshToken) {
 
 async function getOutlookToken(teamsChatId) {
   try {
-
     const container = await containerPromise;
     const { resource: token } = await container.item(`outlook-${teamsChatId}`, `outlook-${teamsChatId}`).read();
 
@@ -114,9 +116,101 @@ async function getOutlookToken(teamsChatId) {
   }
 }
 
+
+async function initializeConversationStateOutlook(context, state, teamsChatId) {
+  try {
+    // Initialize conversation state if not present
+    if (!state.conversation) {
+      state.conversation = {};
+    }
+    
+    const token = await getOutlookToken(teamsChatId);
+    if (token && token !== false) {
+      state.conversation.isOutlookAuthenticated = true;
+      state.conversation.userId = context.activity.from.id;
+      console.log(`Outlook authentication successful for teamsChatId: ${teamsChatId}`);
+      return true;
+    } else {
+      state.conversation.isOutlookAuthenticated = false;
+      console.log(`Outlook authentication failed for teamsChatId: ${teamsChatId}`);
+      return false;
+    }
+  } catch (error) {
+    console.error("Error initializing Outlook conversation state:", error);
+    state.conversation.isOutlookAuthenticated = false;
+    return false;
+  }
+}
+
+
+async function getRecentEmails(context, state, limit) {
+  try {
+    const userId = context.activity.from.id;
+    const teamsChatId = context.activity.channelData?.teamsChatId || userId;
+    const token = await getOutlookToken(teamsChatId);
+    if (!token) {
+      state.conversation.isOutlookAuthenticated = false;
+      await context.sendActivity(
+        MessageFactory.text(
+          `[GetRecentEmails] 🔒 You need to authenticate with Outlook first. Please use the \`/outlook\` command to login.`
+        )
+      );
+      return { status: "error", message: "User authentication required" };
+    }
+    state.conversation.isOutlookAuthenticated = true;
+    state.conversation.userId = userId;
+    console.log("Fetching recent emails from Outlook...");
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const response = await axios.get(
+          `https://graph.microsoft.com/v1.0/me/messages?$orderby=receivedDateTime desc&$top=${limit}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        console.log("Raw API response for recent emails:", JSON.stringify(response.data, null, 2));
+        return {
+          status: "success",
+          data: response.data.value || [],
+          message: response.data.value?.length > 0 ? "Emails found" : "No emails found"
+        };
+      } catch (error) {
+        if (error.response?.status === 429 && retries > 0) {
+          const delay = Math.pow(2, 3 - retries) * 1000;
+          console.log(`Rate limit hit, retrying after ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          retries--;
+          continue;
+        }
+        throw error;
+      }
+    }
+    throw new Error("Max retries reached for rate limit");
+  } catch (error) {
+    console.error(`Error fetching recent emails:`, {
+      message: error.message,
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    if (error.response?.status === 401) {
+      state.conversation.isOutlookAuthenticated = false;
+      await context.sendActivity(
+        MessageFactory.text(`[GetRecentEmails] 🔑 Your Outlook session has expired. Please use \`/outlook\` to login again.`)
+      );
+      return { status: "error", message: "Token expired" };
+    }
+    const errorMessage = error.response?.data?.error?.message || error.message;
+    return { status: "error", message: errorMessage };
+  }
+}
+
+
 module.exports = {
   getAuthUrl,
   exchangeCodeForToken,
   storeOutlookToken,
   getOutlookToken,
+  initializeConversationStateOutlook,
+  getRecentEmails,
 };

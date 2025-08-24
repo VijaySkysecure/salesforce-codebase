@@ -712,6 +712,84 @@ async function cancelSalesforceMeeting(teamsChatId, meetingId) {
 }
 
 
+async function generateOpportunityFromEmail(context, state, email, teamsChatId) {
+  try {
+    console.log("Processing email for opportunity creation:", {
+      subject: email.subject,
+      from: email.from.emailAddress.name,
+      fromAddress: email.from.emailAddress.address
+    });
+
+    // Generate opportunity name from email subject and sender (2-3 words)
+    let opportunityName = "";
+    const senderName = email.from.emailAddress.name || email.from.emailAddress.address.split('@')[0];
+    const subject = email.subject || "Email";
+    
+    // Extract key words from subject and combine with sender name
+    const subjectWords = subject.split(' ').filter(word => 
+      word.length > 3 && 
+      !['the', 'and', 'for', 'with', 'from', 'that', 'this', 'your'].includes(word.toLowerCase())
+    );
+    
+    if (subjectWords.length > 0) {
+      // Take first meaningful word from subject + sender name
+      const keyWord = subjectWords[0];
+      opportunityName = `${senderName} ${keyWord}`.substring(0, 50); // Limit length
+    } else {
+      // Fallback to sender name + "Opportunity"
+      opportunityName = `${senderName} Opportunity`.substring(0, 50);
+    }
+
+    // Set close date to 31 days from today
+    const closeDate = new Date();
+    closeDate.setDate(closeDate.getDate() + 31);
+    const formattedCloseDate = closeDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+    const stageName = "Prospecting";
+
+    console.log("Creating Salesforce opportunity with details:", {
+      name: opportunityName,
+      stageName: stageName,
+      closeDate: formattedCloseDate
+    });
+
+    // Create the opportunity in Salesforce
+    const response = await httpRequest(
+      teamsChatId, 
+      `/services/data/v59.0/sobjects/Opportunity`, 
+      "POST", 
+      { 
+        Name: opportunityName, 
+        StageName: stageName, 
+        CloseDate: formattedCloseDate 
+      }
+    );
+
+    if (response.data.id) {
+      return {
+        success: true,
+        id: response.data.id,
+        name: opportunityName,
+        stageName: stageName,
+        closeDate: formattedCloseDate
+      };
+    } else {
+      return {
+        success: false,
+        message: response.message || "Unknown error occurred while creating opportunity"
+      };
+    }
+
+  } catch (error) {
+    console.error("Error in generateOpportunityFromEmail:", error);
+    return {
+      success: false,
+      message: error.response?.data?.error?.message || error.message || "Failed to create opportunity"
+    };
+  }
+}
+
+
 
 
 
@@ -742,5 +820,6 @@ module.exports = {
   findSalesforceContactOrAccount,
   findSalesforceMeeting,
   updateSalesforceMeeting,
-  cancelSalesforceMeeting
+  cancelSalesforceMeeting,
+  generateOpportunityFromEmail
 };

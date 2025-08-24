@@ -454,6 +454,15 @@
     }
   },
   {
+    "name": "CreateOpportunityFromLatestEmail",
+    "description": "Creates a Salesforce opportunity automatically from the user's latest/most recent email in Outlook inbox. The opportunity name is generated from email subject and sender, stage is set to 'Prospecting', and close date is automatically set to 31 days from today.",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  },
+  {
     "name": "Logout",
     "description": "Logout from salesforce acount",
     "parameters": {}
