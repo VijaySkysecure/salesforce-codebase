@@ -20,7 +20,7 @@ const config = {
   microsoftClientId:process.env.MICROSOFT_CLIENT_ID,
   microsoftClientSecret:process.env.MICROSOFT_CLIENT_SECRET,
   microsoftRedirectUrl:process.env.MICROSOFT_REDIRECT_URL,
-  microsoftOauthScope:process.env.MICROSOFT_OAUTH_SCOPE
+  microsoftOauthScope:process.env.MICROSOFT_OAUTH_SCOPE,
 };
 
 console.log("Config loaded:", config);

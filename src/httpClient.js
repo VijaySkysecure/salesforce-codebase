@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { getUserToken, storeUserToken } = require("./cosmos");
+const { getUserToken, storeUserToken } = require("./user");
 const { salesforceClientId, salesforceClientSecret, salesforceRedirectUri } = require("./config");
 
 async function refreshAccessToken(teamsChatId, refreshToken) {

@@ -2,16 +2,22 @@
 const express = require("express");
 const axios = require("axios");
 
+const MongoDbConnection = require("./config/mongoose");
+
 // This agent's adapter
 const adapter = require("./adapter");
 
 // This agent's main dialog.
 const app = require("./app/app");
-const { storeUserToken } = require("./cosmos");
+
+
+const { storeUserToken } = require("./user")
 
 // Create express application.
 const expressApp = express();
 expressApp.use(express.json());
+
+new MongoDbConnection();
 
 const server = expressApp.listen(process.env.port || process.env.PORT || 3978, () => {
   console.log(`\nAgent started, ${expressApp.name} listening to`, server.address());

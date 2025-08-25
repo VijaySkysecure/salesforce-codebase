@@ -29,10 +29,12 @@
         "@microsoft/teams-ai": "^1.5.3",
         "botbuilder": "^4.23.2",
         "chrono-node": "^2.8.4",
+        "cli-color": "^2.0.4",
         "dotenv": "^17.2.1",
         "express": "^5.0.1",
         "html-to-text": "^9.0.5",
-        "moment-timezone": "^0.6.0"
+        "moment-timezone": "^0.6.0",
+        "mongoose": "^8.18.0"
     },
     "devDependencies": {
         "env-cmd": "^10.1.0",

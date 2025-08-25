@@ -1,4 +1,4 @@
-const { getUserToken } = require("./cosmos");
+const { getUserToken } = require("./user");
 const { createSalesforceClient, createOutlookClient } = require("./httpClient");
 
 // Common function to handles the http request and response related things.

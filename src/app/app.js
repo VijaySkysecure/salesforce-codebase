@@ -3,7 +3,7 @@ const path = require("path");
 const config = require("../config");
 const chrono = require("chrono-node");
 const moment = require("moment-timezone");
-const { getUserToken } = require("../cosmos");
+const { getUserToken } = require("../user");
 const { httpRequest } = require("../httprequest");
 const { deleteUserToken } = require("../cosmos");
 const { getOutlookLoginCard } = require("../adaptiveCards/outlookLoginCard");
@@ -2117,7 +2117,7 @@ app.ai.action("CreateOpportunityFromLatestEmail", async (context, state, paramet
 
     if (!status) {
       console.log("User is not authenticated with outlook, sending login card.");
-      const outlookLoginCard = await getOutlookLoginCard(context)(context, userId);
+      const outlookLoginCard = await getOutlookLoginCard(context);
       // Send login card to user
       await context.sendActivity({
         attachments: [CardFactory.adaptiveCard(outlookLoginCard)]
