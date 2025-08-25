@@ -2111,28 +2111,26 @@ app.ai.action("CreateOpportunityFromLatestEmail", async (context, state, paramet
     initializeConversationState(state);
     const userId = context.activity.from.id;
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
-    
+
     // Check Outlook authentication
-    const token = await getOutlookToken(teamsChatId);
-    const isAuthenticated = await initializeConversationStateOutlook(context, state, teamsChatId);
-    
-    if (!isAuthenticated || !token) {
-      const outlookLoginCard = getOutlookLoginCard(context);
+    const { status } = await getUserToken(teamsChatId, "outlook");
+
+    if (!status) {
+      console.log("User is not authenticated with outlook, sending login card.");
+      const outlookLoginCard = await getOutlookLoginCard(context)(context, userId);
+      // Send login card to user
       await context.sendActivity({
         attachments: [CardFactory.adaptiveCard(outlookLoginCard)]
       });
-      await context.sendActivity(
-        MessageFactory.text("🔒 Please authenticate with Outlook using the card above to create an opportunity from your latest email.")
-      );
-      return "User authentication required - login card sent";
+      return;
     }
 
     console.log("Fetching latest email from Outlook...");
-    
+
     // Get the latest email (limit = 1)
     const emailResponse = await getRecentEmails(context, state, 1);
     console.log("Latest email response:", JSON.stringify(emailResponse, null, 2));
-    
+
     if (emailResponse.status !== "success" || !emailResponse.data || emailResponse.data.length === 0) {
       await context.sendActivity(
         MessageFactory.text("📧 No emails found in your inbox.")
@@ -2141,10 +2139,10 @@ app.ai.action("CreateOpportunityFromLatestEmail", async (context, state, paramet
     }
 
     const latestEmail = emailResponse.data[0];
-    
+
     // Generate opportunity details from email
     const opportunityDetails = await generateOpportunityFromEmail(context, state, latestEmail, teamsChatId);
-    
+
     if (!opportunityDetails.success) {
       await context.sendActivity(
         MessageFactory.text(`❌ Failed to create opportunity: ${opportunityDetails.message}`)
@@ -2162,7 +2160,7 @@ app.ai.action("CreateOpportunityFromLatestEmail", async (context, state, paramet
         `📧 **Source Email:** ${latestEmail.subject || "No subject"} from ${latestEmail.from.emailAddress.name}`
       )
     );
-    
+
     return `Successfully created Salesforce opportunity "${opportunityDetails.name}" from latest email`;
 
   } catch (error) {
@@ -2237,27 +2235,7 @@ app.activity(ActivityTypes.Message, async (context, state) => {
     // }
 
     console.log(`Processing message from user: ${userId}, authenticated: ${state.conversation.isAuthenticated}, state:`, state.conversation);
-    // await context.sendActivity(
-    // MessageFactory.text(
-    //   "👋 **Welcome to your AI-powered Salesforce CRM assistant!**\n\n" +
-    //   "To get started, we need to connect your SalesForce CRM account. " +
-    //   "Once connected, you can ask me questions about your CRM data using natural language!"
-    // )
-    // );
-    // if (!state.conversation.isAuthenticated) {
-    //   await context.sendActivity(
-    //     MessageFactory.text(
-    //       "👋 **Welcome to your AI-powered Zoho CRM assistant!**\n\n" +
-    //       "To get started, we need to connect your Zoho CRM account. " +
-    //       "Once connected, you can ask me questions about your CRM data using natural language!"
-    //     )
-    //   );
-    //   await sendZohoLoginCard(context, userId);
-    //   return;
-    // }
 
-    // state.temp = state.temp || {};
-    // state.temp.input = context.activity.text;
 
     console.log("Running AI with input:", state.temp.input);
     await app.ai.run(context, state);

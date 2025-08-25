@@ -68,7 +68,7 @@ async function httpRequest(teamsChatId, url, method = "GET", data = null) {
 
 async function outlookHttpRequest(teamsChatId, url, method = "GET", data = null) {
   try {
-    const { status, accessToken, instanceUrl } = await getUserToken(teamsChatId, "outlook");
+    const { status, accessToken } = await getUserToken(teamsChatId, "outlook");
 
     if (!status) {
       throw new Error("User is not authenticated with Salesforce");
@@ -83,7 +83,7 @@ async function outlookHttpRequest(teamsChatId, url, method = "GET", data = null)
     };
 
     let response;
-    response = await httpResponse(client, method, `${instanceUrl}${url}`, config)
+    response = await httpResponse(client, method, url, data, config)
 
     return response;
   } catch (error) {
@@ -96,4 +96,4 @@ async function outlookHttpRequest(teamsChatId, url, method = "GET", data = null)
 
 
 
-module.exports = { httpRequest,outlookHttpRequest };
+module.exports = { httpRequest, outlookHttpRequest };

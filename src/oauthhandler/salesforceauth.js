@@ -3,7 +3,7 @@ const querystring = require("querystring");
 const config = require("../config");
 const { container: containerPromise } = require("../cosmos");
 const { MessageFactory } = require("botbuilder");
-const { htmlToText } = require("html-to-text");
+const { outlookHttpRequest } = require("../httpRequest.js");
 
 
 function getAuthUrl(teamsChatId) {
@@ -123,7 +123,7 @@ async function initializeConversationStateOutlook(context, state, teamsChatId) {
     if (!state.conversation) {
       state.conversation = {};
     }
-    
+
     const token = await getOutlookToken(teamsChatId);
     if (token && token !== false) {
       state.conversation.isOutlookAuthenticated = true;
@@ -147,28 +147,21 @@ async function getRecentEmails(context, state, limit) {
   try {
     const userId = context.activity.from.id;
     const teamsChatId = context.activity.channelData?.teamsChatId || userId;
-    const token = await getOutlookToken(teamsChatId);
-    if (!token) {
-      state.conversation.isOutlookAuthenticated = false;
-      await context.sendActivity(
-        MessageFactory.text(
-          `[GetRecentEmails] 🔒 You need to authenticate with Outlook first. Please use the \`/outlook\` command to login.`
-        )
-      );
-      return { status: "error", message: "User authentication required" };
-    }
+    
     state.conversation.isOutlookAuthenticated = true;
     state.conversation.userId = userId;
     console.log("Fetching recent emails from Outlook...");
     let retries = 3;
     while (retries > 0) {
       try {
-        const response = await axios.get(
+
+        const response=await outlookHttpRequest(
+          teamsChatId,
           `https://graph.microsoft.com/v1.0/me/messages?$orderby=receivedDateTime desc&$top=${limit}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
+          "GET",
+          null
+        )
+        
         console.log("Raw API response for recent emails:", JSON.stringify(response.data, null, 2));
         return {
           status: "success",
